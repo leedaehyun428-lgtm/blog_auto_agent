@@ -341,7 +341,9 @@ function App() {
                         <span className={`text-sm font-bold ${isTestMode ? 'text-orange-500' : 'text-slate-600'}`}>
                           {isTestMode ? '테스트 모드 (ON)' : '실전 모드 (OFF)'}
                         </span>
-                        <span className="text-[10px] text-slate-400">토큰 미사용 / 가짜 데이터</span>
+                        <span className="text-[10px] text-slate-400">
+                          {isTestMode ? '토큰 미사용 / 가짜 데이터' : '실제 API 토큰 사용 / 과금 주의'}
+                        </span>                     
                       </div>
                       <div className={`w-9 h-5 rounded-full relative transition-colors ${isTestMode ? 'bg-orange-400' : 'bg-slate-200'}`}>
                         <div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm absolute top-0.5 transition-all ${isTestMode ? 'left-5' : 'left-0.5'}`} />
