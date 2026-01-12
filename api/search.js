@@ -1,10 +1,16 @@
-// api/search.js
 export default async function handler(req, res) {
+  // CORS 처리 (필요한 경우)
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
   const { keyword, theme } = req.body;
-  const API_KEY = process.env.VITE_PERPLEXITY_API_KEY; // Vercel 환경변수에서 가져옴
+  const API_KEY = process.env.VITE_PERPLEXITY_API_KEY;
 
-  if (!API_KEY) return res.status(500).json({ error: "API Key missing" });
+  if (!API_KEY) {
+    return res.status(500).json({ error: "API Key is missing in Server Env" });
+  }
 
+  // 테마별 검색 가이드
   let searchGuide = "";
   switch (theme) {
     case 'restaurant': searchGuide = "주차 정보, 대표 메뉴 및 가격, 실제 방문자들의 맛 평가, 가게 분위기(인테리어), 웨이팅 꿀팁, 영업시간, 위치"; break;
@@ -16,6 +22,8 @@ export default async function handler(req, res) {
   }
 
   try {
+    console.log(`🚀 [Server] Searching for: ${keyword}`); // Vercel 로그에 찍힘
+    
     const response = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: {
@@ -30,9 +38,20 @@ export default async function handler(req, res) {
         ]
       })
     });
+
+    // Perplexity가 에러를 뱉었는지 확인
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error("❌ Perplexity API Error:", errorText);
+        return res.status(response.status).json({ error: "Perplexity API Error", details: errorText });
+    }
+
     const data = await response.json();
     res.status(200).json(data);
+
   } catch (error) {
-    res.status(500).json({ error: "Search failed" });
+    console.error("❌ Server Internal Error:", error);
+    // 에러 내용을 클라이언트에게 그대로 보여줌 (디버깅용)
+    res.status(500).json({ error: "Server Crash", message: error.message, stack: error.stack });
   }
 }
