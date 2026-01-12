@@ -1,16 +1,19 @@
 export default async function handler(req, res) {
-  // CORS 처리 (필요한 경우)
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // 1. 보안: 메서드 제한 (POST만 허용)
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
   const { keyword, theme } = req.body;
   const API_KEY = process.env.VITE_PERPLEXITY_API_KEY;
 
   if (!API_KEY) {
-    return res.status(500).json({ error: "API Key is missing in Server Env" });
+    // 키가 없을 때 (서버 로그엔 남기고, 클라이언트엔 '설정 오류'라고만 알림)
+    console.error("❌ API Key missing in environment variables");
+    return res.status(500).json({ error: "Server Configuration Error" });
   }
 
-  // 테마별 검색 가이드
+  // 2. 테마별 검색 가이드 설정
   let searchGuide = "";
   switch (theme) {
     case 'restaurant': searchGuide = "주차 정보, 대표 메뉴 및 가격, 실제 방문자들의 맛 평가, 가게 분위기(인테리어), 웨이팅 꿀팁, 영업시간, 위치"; break;
@@ -22,8 +25,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log(`🚀 [Server] Searching for: ${keyword}`); // Vercel 로그에 찍힘
-    
+    // 3. Perplexity 요청
     const response = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
       headers: {
@@ -39,19 +41,18 @@ export default async function handler(req, res) {
       })
     });
 
-    // Perplexity가 에러를 뱉었는지 확인
+    // Perplexity 쪽 에러 처리 (로그는 찍되, 사용자에겐 깔끔하게)
     if (!response.ok) {
         const errorText = await response.text();
         console.error("❌ Perplexity API Error:", errorText);
-        return res.status(response.status).json({ error: "Perplexity API Error", details: errorText });
+        return res.status(response.status).json({ error: "정보를 가져오는 데 실패했습니다." });
     }
 
     const data = await response.json();
     res.status(200).json(data);
 
   } catch (error) {
-    console.error("❌ Server Internal Error:", error);
-    // 에러 내용을 클라이언트에게 그대로 보여줌 (디버깅용)
-    res.status(500).json({ error: "Server Crash", message: error.message, stack: error.stack });
+    console.error("❌ Server Error:", error);
+    res.status(500).json({ error: "알 수 없는 서버 오류가 발생했습니다." });
   }
 }
