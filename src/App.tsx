@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Search, Copy, Clock, Trash2, CheckCircle, RotateCcw, Menu, X, Utensils, Plane, Shirt, Landmark, Smile, AlignLeft, Smartphone, Monitor, Download, Image as ImageIcon, PenLine, Save, XCircle, UploadCloud, DownloadCloud } from 'lucide-react';
+import { Sparkles, Search, Copy, Clock, Trash2, CheckCircle, RotateCcw, Menu, X, Utensils, Plane, Shirt, Landmark, Smile, AlignLeft, Smartphone, Monitor, Download, Image as ImageIcon, PenLine, Save, XCircle, UploadCloud, DownloadCloud, Package, MessageSquarePlus } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
 import { searchInfo, generateBlogPost, type ThemeType } from './api';
@@ -17,9 +17,11 @@ interface HistoryItem {
   isTestMode: boolean;
 }
 
+// ✨ [변경 1] 'review' 테마 추가 (아이콘: Package)
 const THEMES: { id: ThemeType; label: string; icon: any }[] = [
   { id: 'restaurant', label: '맛집/카페', icon: Utensils },
   { id: 'travel', label: '여행/명소', icon: Plane },
+  { id: 'review', label: '제품/리뷰', icon: Package }, // 👈 추가됨
   { id: 'fashion', label: '패션/뷰티', icon: Shirt },
   { id: 'finance', label: '금융/정보', icon: Landmark },
   { id: 'daily', label: '일상/생각', icon: Smile },
@@ -38,13 +40,17 @@ function App() {
   
   const [isMobileView, setIsMobileView] = useState(false);
 
-  // ✨ 수정 모드 상태
+  // 편집 모드 상태
   const [isEditing, setIsEditing] = useState(false);
   const [editableResult, setEditableResult] = useState('');
 
+  // ✨ [변경 2] AI 가이드 관련 상태 추가
+  const [useGuide, setUseGuide] = useState(false);
+  const [guide, setGuide] = useState('');
+
   const thumbnailRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null); // 파일 업로드용
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [copyStatus, setCopyStatus] = useState('idle');
@@ -109,7 +115,6 @@ function App() {
     }
   };
 
-  // ✨ JSON 내보내기 (백업)
   const exportHistory = () => {
     const jsonString = `data:text/json;chatset=utf-8,${encodeURIComponent(
       JSON.stringify(history)
@@ -120,7 +125,6 @@ function App() {
     link.click();
   };
 
-  // ✨ JSON 가져오기 (복원)
   const importHistory = (event: React.ChangeEvent<HTMLInputElement>) => {
     const fileReader = new FileReader();
     if (event.target.files && event.target.files.length > 0) {
@@ -151,7 +155,7 @@ function App() {
     setResultIsTestMode(item.isTestMode ?? true); 
     setStep('done');
     setIsMobileView(false);
-    setIsEditing(false); // 편집 모드 초기화
+    setIsEditing(false);
   };
 
   const resetToHome = () => {
@@ -160,6 +164,9 @@ function App() {
     setResult('');
     setIsMobileView(false);
     setIsEditing(false);
+    // 가이드 상태는 유지하거나 초기화 (선택사항)
+    // setUseGuide(false);
+    // setGuide('');
   };
 
   const handleGenerate = async () => {
@@ -170,8 +177,15 @@ function App() {
     try {
       setStep('searching');
       const searchData = await searchInfo(keyword, isTestMode, selectedTheme);
+      
       setStep('writing');
-      const blogPost = await generateBlogPost(keyword, searchData, selectedTheme);
+      // ✨ [변경 3] guide 값을 generateBlogPost에 전달
+      const blogPost = await generateBlogPost(
+        keyword, 
+        searchData, 
+        selectedTheme, 
+        useGuide ? guide : undefined
+      );
       
       setResult(blogPost);
       setResultIsTestMode(isTestMode);
@@ -238,19 +252,16 @@ function App() {
     }
   };
 
-  // ✨ 편집 모드 시작
   const startEditing = () => {
     setEditableResult(result);
     setIsEditing(true);
   };
 
-  // ✨ 편집 내용 저장
   const saveEditing = () => {
     setResult(editableResult);
     setIsEditing(false);
   };
 
-  // ✨ 편집 취소
   const cancelEditing = () => {
     setIsEditing(false);
   };
@@ -258,7 +269,7 @@ function App() {
   return (
     <div className={`min-h-screen bg-gradient-to-br ${themeStyles.bg} flex items-center justify-center p-4 md:p-6 text-slate-700 font-sans transition-colors duration-700 ${themeStyles.selection}`}>
       
-      {/* 썸네일 생성용 디자인 */}
+      {/* 썸네일 생성용 디자인 (보이지 않음) */}
       <div className="fixed left-[-9999px] top-0">
         <div 
           ref={thumbnailRef}
@@ -352,7 +363,7 @@ function App() {
 
                     <div className="my-1 border-t border-slate-100" />
 
-                    {/* ✨ 백업 및 복원 메뉴 */}
+                    {/* 백업 및 복원 메뉴 */}
                     <button onClick={exportHistory} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-colors text-sm text-slate-600">
                       <DownloadCloud className="w-4 h-4 text-slate-400" /> 기록 백업하기
                     </button>
@@ -386,7 +397,7 @@ function App() {
               {/* 테마 선택 */}
               <div className="mb-8">
                 <p className="text-center text-sm font-medium text-slate-400 mb-4">오늘의 포스팅 주제는 무엇인가요?</p>
-                <div className="grid grid-cols-5 gap-3">
+                <div className="grid grid-cols-6 gap-2 md:gap-3">
                   {THEMES.map((theme) => {
                     const Icon = theme.icon;
                     const isSelected = selectedTheme === theme.id;
@@ -394,16 +405,16 @@ function App() {
                       <button
                         key={theme.id}
                         onClick={() => setSelectedTheme(theme.id)}
-                        className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl transition-all duration-300 ${
+                        className={`flex flex-col items-center justify-center gap-2 p-2 md:p-3 rounded-2xl transition-all duration-300 ${
                           isSelected 
                             ? `bg-white shadow-lg shadow-slate-200 ring-2 ${themeStyles.ring} -translate-y-1` 
                             : 'bg-white/40 hover:bg-white/80 hover:shadow-md text-slate-400'
                         }`}
                       >
                         <div className={`p-2 rounded-full transition-colors ${isSelected ? themeStyles.iconBg : 'bg-slate-100 text-slate-400'}`}>
-                          <Icon className="w-5 h-5" />
+                          <Icon className="w-4 h-4 md:w-5 md:h-5" />
                         </div>
-                        <span className={`text-[11px] font-semibold ${isSelected ? 'text-slate-700' : 'text-slate-400'}`}>
+                        <span className={`text-[10px] md:text-[11px] font-semibold ${isSelected ? 'text-slate-700' : 'text-slate-400'}`}>
                           {theme.label.split('/')[0]}
                         </span>
                       </button>
@@ -412,24 +423,71 @@ function App() {
                 </div>
               </div>
 
-              {/* 검색창 */}
-              <div className="relative mb-10 group">
-                <div className={`absolute inset-0 rounded-full bg-gradient-to-r ${isTestMode ? 'from-orange-300 to-yellow-400' : 'from-sky-300 to-blue-400'} blur opacity-20 group-hover:opacity-40 transition-opacity ${isLoading ? 'animate-pulse' : ''}`}></div>
-                <input 
-                  type="text" 
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                  placeholder={`${THEMES.find(t=>t.id===selectedTheme)?.label.split('/')[0]} 키워드를 입력해보세요`}
-                  className={`relative w-full pl-8 pr-16 py-6 text-lg bg-white border rounded-full focus:outline-none focus:ring-4 shadow-xl shadow-slate-100/50 text-slate-700 placeholder:text-slate-300 transition-all ${themeStyles.border} ${themeStyles.focusRing}`}
-                  onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleGenerate()}
-                />
-                <button 
-                  onClick={handleGenerate}
-                  disabled={isLoading}
-                  className={`absolute right-3 top-3 p-3 text-white rounded-full shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all duration-300 ${themeStyles.button}`}
-                >
-                  {isLoading ? <Sparkles className="w-6 h-6 animate-spin" /> : <Search className="w-6 h-6" />}
-                </button>
+              {/* ✨ [변경 4] 검색창 및 가이드 입력 영역 통합 */}
+              <div className="space-y-4 mb-10">
+                <div className="relative group z-10">
+                  <div className={`absolute inset-0 rounded-3xl bg-gradient-to-r ${isTestMode ? 'from-orange-300 to-yellow-400' : 'from-sky-300 to-blue-400'} blur opacity-20 group-hover:opacity-40 transition-opacity ${isLoading ? 'animate-pulse' : ''}`}></div>
+                  <input 
+                    type="text" 
+                    value={keyword}
+                    onChange={(e) => setKeyword(e.target.value)}
+                    placeholder={`${THEMES.find(t=>t.id===selectedTheme)?.label.split('/')[0]} 키워드를 입력해보세요`}
+                    className={`relative w-full pl-8 pr-16 py-6 text-lg bg-white border rounded-3xl focus:outline-none focus:ring-4 shadow-xl shadow-slate-100/50 text-slate-700 placeholder:text-slate-300 transition-all ${themeStyles.border} ${themeStyles.focusRing}`}
+                    onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleGenerate()}
+                  />
+                  <button 
+                    onClick={handleGenerate}
+                    disabled={isLoading}
+                    className={`absolute right-3 top-3 p-3 text-white rounded-2xl shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all duration-300 ${themeStyles.button}`}
+                  >
+                    {isLoading ? <Sparkles className="w-6 h-6 animate-spin" /> : <Search className="w-6 h-6" />}
+                  </button>
+                </div>
+
+                {/* ✨ 가이드 입력 아코디언 */}
+                <div className="relative px-2">
+                   <button 
+                     onClick={() => setUseGuide(!useGuide)}
+                     className={`flex items-center gap-2 text-sm font-medium transition-colors ${useGuide ? themeStyles.accentText : 'text-slate-400 hover:text-slate-600'}`}
+                   >
+                     <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${useGuide ? `${isTestMode ? 'bg-orange-500 border-orange-500' : 'bg-blue-500 border-blue-500'}` : 'bg-white border-slate-300'}`}>
+                        {useGuide && <span className="text-white text-[10px]">✔</span>}
+                     </div>
+                     <MessageSquarePlus className="w-4 h-4" />
+                     <span>AI에게 상세 가이드 주기 (선택사항)</span>
+                   </button>
+                   
+                  <AnimatePresence>
+                     {useGuide && (
+                       <motion.div
+                         initial={{ height: 0, opacity: 0 }}
+                         animate={{ height: 'auto', opacity: 1 }}
+                         exit={{ height: 0, opacity: 0 }}
+                         className="overflow-hidden"
+                       >
+                         <div className="relative">
+                           <textarea
+                             value={guide}
+                             onChange={(e) => setGuide(e.target.value)}
+                             placeholder="예시: '30대 직장인 말투로 써줘...' / '업체에서 준 가이드를 여기에 붙여넣으세요...'"
+                             className={`w-full mt-3 p-4 rounded-xl border bg-white/50 focus:bg-white text-sm text-slate-600 placeholder:text-slate-300 focus:outline-none focus:ring-2 resize-none h-40 transition-all ${themeStyles.border} ${themeStyles.focusRing}`}
+                           />
+                           
+                           {/* ✨ 글자 수 카운터 추가 */}
+                           <div className="flex justify-between items-center mt-2 px-1">
+                              <p className="text-[11px] text-slate-400">
+                                * 업체 가이드를 통째로 붙여넣으셔도 됩니다. (길이 제한 없음)
+                              </p>
+                              <div className="text-xs text-slate-400 font-medium bg-white/50 px-2 py-1 rounded-md border border-slate-100">
+                                📝 현재 <span className={`font-bold ${themeStyles.accentText}`}>{guide.length.toLocaleString()}</span>자
+                              </div>
+                           </div>
+                         </div>
+                       </motion.div>
+                     )}
+                   </AnimatePresence>
+
+                </div>
               </div>
 
               {/* 히스토리 */}
@@ -471,7 +529,7 @@ function App() {
                   </div>
                   <p className="text-slate-400 font-medium text-center leading-relaxed">
                     주제를 선택하고 키워드를 던져주세요.<br/>
-                    <span className={`${themeStyles.accentText} font-semibold`}>제목 추천</span>부터 <span className={`${themeStyles.accentText} font-semibold`}>해시태그</span>까지.<br/>
+                    <span className={`${themeStyles.accentText} font-semibold`}>제품 리뷰</span>부터 <span className={`${themeStyles.accentText} font-semibold`}>맛집 탐방</span>까지.<br/>
                     {isTestMode ? '테스트 모드라 안심하고 쓰세요!' : '감성 가득한 글을 써드릴게요.'} ☁️
                   </p>
                 </motion.div>
@@ -494,7 +552,7 @@ function App() {
                       {step === 'searching' ? '정보를 모으고 있어요...' : '글을 다듬고 있어요...'}
                     </h3>
                     <p className="text-slate-400 text-sm">
-                       {step === 'searching' ? '최신 리뷰와 꿀팁을 찾는 중 🔍' : '소녀 감성 한 스푼 넣는 중 ✨'}
+                        {step === 'searching' ? '최신 리뷰와 꿀팁을 찾는 중 🔍' : '소녀 감성 한 스푼 넣는 중 ✨'}
                     </p>
                   </div>
                 </motion.div>
@@ -519,49 +577,45 @@ function App() {
                     </div>
 
                     <div className="flex items-center gap-1.5 md:gap-2">
-                       {/* ✨ 수정 모드일 때는 [취소] [저장] 버튼 표시 */}
-                       {isEditing ? (
-                         <>
-                           <button onClick={cancelEditing} className="p-2 text-slate-400 hover:text-red-500 hover:bg-white rounded-lg transition-colors flex items-center gap-1 text-xs font-bold">
-                             <XCircle className="w-4 h-4" /> 취소
-                           </button>
-                           <button onClick={saveEditing} className="p-2 bg-slate-800 text-white hover:bg-slate-900 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold shadow-sm">
-                             <Save className="w-4 h-4" /> 저장
-                           </button>
-                         </>
-                       ) : (
-                         <>
-                            {/* 평소에는 툴바 버튼들 */}
-                           <button onClick={() => setIsMobileView(!isMobileView)} className={`p-2 rounded-lg transition-colors ${isMobileView ? `${themeStyles.lightBg} ${themeStyles.accentText}` : 'text-slate-400 hover:bg-white'}`} title="모바일 미리보기">
-                             {isMobileView ? <Smartphone className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
-                           </button>
+                        {isEditing ? (
+                          <>
+                            <button onClick={cancelEditing} className="p-2 text-slate-400 hover:text-red-500 hover:bg-white rounded-lg transition-colors flex items-center gap-1 text-xs font-bold">
+                              <XCircle className="w-4 h-4" /> 취소
+                            </button>
+                            <button onClick={saveEditing} className="p-2 bg-slate-800 text-white hover:bg-slate-900 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold shadow-sm">
+                              <Save className="w-4 h-4" /> 저장
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => setIsMobileView(!isMobileView)} className={`p-2 rounded-lg transition-colors ${isMobileView ? `${themeStyles.lightBg} ${themeStyles.accentText}` : 'text-slate-400 hover:bg-white'}`} title="모바일 미리보기">
+                              {isMobileView ? <Smartphone className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
+                            </button>
 
-                           {/* ✨ 수정하기 버튼 추가 */}
-                           <button onClick={startEditing} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-white rounded-lg transition-colors" title="내용 수정하기">
-                             <PenLine className="w-5 h-5" />
-                           </button>
+                            <button onClick={startEditing} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-white rounded-lg transition-colors" title="내용 수정하기">
+                              <PenLine className="w-5 h-5" />
+                            </button>
 
-                           <button onClick={handleDownloadThumbnail} className="p-2 text-slate-400 hover:text-pink-500 hover:bg-white rounded-lg transition-colors" title="썸네일 이미지 만들기">
-                             <ImageIcon className="w-5 h-5" />
-                           </button>
+                            <button onClick={handleDownloadThumbnail} className="p-2 text-slate-400 hover:text-pink-500 hover:bg-white rounded-lg transition-colors" title="썸네일 이미지 만들기">
+                              <ImageIcon className="w-5 h-5" />
+                            </button>
 
-                           <button onClick={handleDownloadFile} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-white rounded-lg transition-colors" title="텍스트 파일로 저장">
-                             <Download className="w-5 h-5" />
-                           </button>
+                            <button onClick={handleDownloadFile} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-white rounded-lg transition-colors" title="텍스트 파일로 저장">
+                              <Download className="w-5 h-5" />
+                            </button>
                         
-                           <button onClick={handleCopyCleanText} className={`flex-shrink-0 flex items-center gap-2 font-bold transition-all rounded-xl shadow-sm transform active:scale-95 text-xs px-3 py-2 md:text-sm md:px-4 md:py-2 whitespace-nowrap ${copyStatus === 'copied' ? 'bg-green-500 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'}`}>
-                             {copyStatus === 'copied' ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                             <span>{copyStatus === 'copied' ? '완료' : '복사'}</span>
-                           </button>
-                         </>
-                       )}
+                            <button onClick={handleCopyCleanText} className={`flex-shrink-0 flex items-center gap-2 font-bold transition-all rounded-xl shadow-sm transform active:scale-95 text-xs px-3 py-2 md:text-sm md:px-4 md:py-2 whitespace-nowrap ${copyStatus === 'copied' ? 'bg-green-500 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'}`}>
+                              {copyStatus === 'copied' ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                              <span>{copyStatus === 'copied' ? '완료' : '복사'}</span>
+                            </button>
+                          </>
+                        )}
                     </div>
                   </div>
                   
                   {/* 결과 본문 */}
                   <div className={`flex-1 overflow-y-auto p-8 custom-scrollbar bg-white/50 ${isMobileView ? 'text-sm' : ''}`}>
                     
-                    {/* ✨ 수정 모드일 때는 Textarea, 아닐 때는 Markdown */}
                     {isEditing ? (
                       <textarea
                         value={editableResult}
@@ -581,14 +635,14 @@ function App() {
                     
                     {/* 하단 정보 */}
                     <div className="mt-10 pt-6 border-t border-dashed border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-slate-400">
-                       <div className="flex flex-col gap-1 text-center md:text-left">
+                        <div className="flex flex-col gap-1 text-center md:text-left">
                           <span className="opacity-80">Blog Master AI가 작성한 초안입니다. ({resultIsTestMode ? '테스트 모드' : '실전 모드'})</span>
                           <span className={`font-bold ${themeStyles.accentText} tracking-tight`}>
                             Copyright © Simsimpuri All Rights Reserved.
                           </span>
-                       </div>
-                       
-                       <div className="flex items-center gap-3 font-medium bg-white/50 px-3 py-1.5 rounded-lg border border-slate-100 shadow-sm">
+                        </div>
+                        
+                        <div className="flex items-center gap-3 font-medium bg-white/50 px-3 py-1.5 rounded-lg border border-slate-100 shadow-sm">
                           <div className="flex items-center gap-1.5">
                              <AlignLeft className="w-3 h-3" />
                              <span>공백포함 <b className={`text-slate-600 ${themeStyles.accentText}`}>{result.length}</b></span>
@@ -597,7 +651,7 @@ function App() {
                           <div>
                              <span>제외 <b className={`text-slate-600 ${themeStyles.accentText}`}>{result.replace(/\s/g, '').length}</b></span>
                           </div>
-                       </div>
+                        </div>
                     </div>
                   </div>
                 </motion.div>
