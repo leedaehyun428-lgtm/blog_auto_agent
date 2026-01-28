@@ -1,9 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Search, Copy, Clock, Trash2, CheckCircle, RotateCcw, Menu, X, Utensils, Plane, Shirt, Landmark, Smile, AlignLeft, Smartphone, Monitor, Download, Image as ImageIcon, PenLine, Save, XCircle, UploadCloud, DownloadCloud, Package, MessageSquarePlus } from 'lucide-react';
+import { 
+  Sparkles, Search, Copy, Clock, Trash2, CheckCircle, RotateCcw, Menu, X, 
+  Utensils, Plane, Shirt, Landmark, Smile, AlignLeft, Smartphone, Monitor, 
+  Download, Image as ImageIcon, PenLine, Save, XCircle, UploadCloud, DownloadCloud, 
+  Package, MessageSquarePlus, BarChart3, MousePointerClick, AlertTriangle // ✨ 아이콘 추가
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
-import { searchInfo, generateBlogPost, type ThemeType } from './api';
+import { searchInfo, generateBlogPost, analyzeKeyword, type ThemeType } from './api'; // ✨ analyzeKeyword 추가
 
 const MY_BLOG_ID = 'leedh428';
 const MY_INFLUENCER_URL = 'https://in.naver.com/simsimpuri';
@@ -17,11 +22,10 @@ interface HistoryItem {
   isTestMode: boolean;
 }
 
-// ✨ [변경 1] 'review' 테마 추가 (아이콘: Package)
 const THEMES: { id: ThemeType; label: string; icon: any }[] = [
   { id: 'restaurant', label: '맛집/카페', icon: Utensils },
   { id: 'travel', label: '여행/명소', icon: Plane },
-  { id: 'review', label: '제품/리뷰', icon: Package }, // 👈 추가됨
+  { id: 'review', label: '제품/리뷰', icon: Package },
   { id: 'fashion', label: '패션/뷰티', icon: Shirt },
   { id: 'finance', label: '금융/정보', icon: Landmark },
   { id: 'daily', label: '일상/생각', icon: Smile },
@@ -44,9 +48,16 @@ function App() {
   const [isEditing, setIsEditing] = useState(false);
   const [editableResult, setEditableResult] = useState('');
 
-  // ✨ [변경 2] AI 가이드 관련 상태 추가
+  // AI 가이드 관련 상태
   const [useGuide, setUseGuide] = useState(false);
   const [guide, setGuide] = useState('');
+
+  // ✨ [신규] 키워드 분석 상태
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisData, setAnalysisData] = useState<{
+    main: { keyword: string; totalSearch: number; totalClick: string; compIdx: string };
+    recommendations: { keyword: string; totalSearch: number; totalClick: string; compIdx: string }[];
+  } | null>(null);
 
   const thumbnailRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -162,11 +173,28 @@ function App() {
     setStep('idle');
     setKeyword('');
     setResult('');
+    setAnalysisData(null); // 분석 데이터 초기화
     setIsMobileView(false);
     setIsEditing(false);
-    // 가이드 상태는 유지하거나 초기화 (선택사항)
-    // setUseGuide(false);
-    // setGuide('');
+  };
+
+  // ✨ [신규] 키워드 분석 핸들러
+  const handleAnalyze = async () => {
+    if (!keyword.trim()) {
+      alert("키워드를 입력해주세요!");
+      return;
+    }
+    setIsAnalyzing(true);
+    setAnalysisData(null); // 기존 결과 초기화
+
+    try {
+      const data = await analyzeKeyword(keyword);
+      setAnalysisData(data);
+    } catch (error) {
+      alert("분석에 실패했습니다. API 키 설정을 확인하거나 잠시 후 시도해주세요.");
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const handleGenerate = async () => {
@@ -179,7 +207,6 @@ function App() {
       const searchData = await searchInfo(keyword, isTestMode, selectedTheme);
       
       setStep('writing');
-      // ✨ [변경 3] guide 값을 generateBlogPost에 전달
       const blogPost = await generateBlogPost(
         keyword, 
         searchData, 
@@ -423,26 +450,127 @@ function App() {
                 </div>
               </div>
 
-              {/* ✨ [변경 4] 검색창 및 가이드 입력 영역 통합 */}
-              <div className="space-y-4 mb-10">
-                <div className="relative group z-10">
-                  <div className={`absolute inset-0 rounded-3xl bg-gradient-to-r ${isTestMode ? 'from-orange-300 to-yellow-400' : 'from-sky-300 to-blue-400'} blur opacity-20 group-hover:opacity-40 transition-opacity ${isLoading ? 'animate-pulse' : ''}`}></div>
-                  <input 
-                    type="text" 
-                    value={keyword}
-                    onChange={(e) => setKeyword(e.target.value)}
-                    placeholder={`${THEMES.find(t=>t.id===selectedTheme)?.label.split('/')[0]} 키워드를 입력해보세요`}
-                    className={`relative w-full pl-8 pr-16 py-6 text-lg bg-white border rounded-3xl focus:outline-none focus:ring-4 shadow-xl shadow-slate-100/50 text-slate-700 placeholder:text-slate-300 transition-all ${themeStyles.border} ${themeStyles.focusRing}`}
-                    onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleGenerate()}
-                  />
+              {/* ✨ 검색창 및 분석 버튼 */}
+              <div className="space-y-6 mb-10">
+                <div className="flex gap-2 relative z-10">
+                  <div className="relative flex-1 group">
+                    <div className={`absolute inset-0 rounded-2xl bg-gradient-to-r ${isTestMode ? 'from-orange-300 to-yellow-400' : 'from-sky-300 to-blue-400'} blur opacity-20 group-hover:opacity-40 transition-opacity`}></div>
+                    <input 
+                      type="text" 
+                      value={keyword}
+                      onChange={(e) => setKeyword(e.target.value)}
+                      placeholder={`${THEMES.find(t=>t.id===selectedTheme)?.label.split('/')[0]} 키워드 입력`}
+                      className={`relative w-full px-6 py-4 text-lg bg-white border rounded-2xl focus:outline-none focus:ring-4 shadow-lg text-slate-700 placeholder:text-slate-300 transition-all ${themeStyles.border} ${themeStyles.focusRing}`}
+                      onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleGenerate()}
+                    />
+                  </div>
+                  
+                  {/* 📊 분석 버튼 */}
+                  <button 
+                    onClick={handleAnalyze}
+                    disabled={isAnalyzing || isLoading}
+                    className="px-4 py-4 bg-slate-800 text-white rounded-2xl font-bold shadow-lg hover:bg-slate-700 active:scale-95 disabled:opacity-50 transition-all flex flex-col items-center justify-center min-w-[80px]"
+                  >
+                    {isAnalyzing ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <BarChart3 className="w-6 h-6" />}
+                    <span className="text-[10px] mt-1 font-medium">분석</span>
+                  </button>
+
+                  {/* ✨ 생성 버튼 */}
                   <button 
                     onClick={handleGenerate}
                     disabled={isLoading}
-                    className={`absolute right-3 top-3 p-3 text-white rounded-2xl shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all duration-300 ${themeStyles.button}`}
+                    className={`px-6 py-4 text-white rounded-2xl font-bold shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50 transition-all flex flex-col items-center justify-center min-w-[80px] ${themeStyles.button}`}
                   >
                     {isLoading ? <Sparkles className="w-6 h-6 animate-spin" /> : <Search className="w-6 h-6" />}
+                    <span className="text-[10px] mt-1 font-medium">생성</span>
                   </button>
                 </div>
+
+                {/* 📊 분석 결과 리포트 (분석 완료 시 표시) */}
+                <AnimatePresence>
+                  {analysisData && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10, height: 0 }} 
+                      animate={{ opacity: 1, y: 0, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+                        
+                        {/* 1. 내 키워드 진단 */}
+                        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                          <div>
+                            <span className="text-xs font-bold text-slate-400 uppercase">Current Keyword</span>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-lg font-bold text-slate-800">{analysisData.main.keyword}</span>
+                              {analysisData.main.compIdx === 'HIGH' && <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">🔥 경쟁높음</span>}
+                              {analysisData.main.compIdx === 'MID' && <span className="text-[10px] font-bold bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded-full">⚡ 경쟁중간</span>}
+                              {analysisData.main.compIdx === 'LOW' && <span className="text-[10px] font-bold bg-green-100 text-green-600 px-2 py-0.5 rounded-full">🍀 경쟁낮음</span>}
+                            </div>
+                          </div>
+                          <div className="flex gap-4 text-right">
+                            <div>
+                              <p className="text-xs text-slate-400 mb-0.5">월간 검색수</p>
+                              <p className="font-bold text-slate-700">{analysisData.main.totalSearch.toLocaleString()}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-400 mb-0.5">클릭수</p>
+                              <p className="font-bold text-slate-700">{analysisData.main.totalClick}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 2. 황금 키워드 추천 */}
+                        <div>
+                           <div className="flex items-center gap-2 mb-3">
+                             <Sparkles className="w-4 h-4 text-yellow-500" />
+                             <span className="text-sm font-bold text-slate-600">AI 추천 황금 키워드 (클릭하여 교체)</span>
+                           </div>
+                           
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                             {analysisData.recommendations.length > 0 ? (
+                               analysisData.recommendations.map((item, idx) => (
+                                 <button 
+                                   key={idx}
+                                   onClick={() => {
+                                     setKeyword(item.keyword);
+                                     handleAnalyze(); // 교체 후 바로 재분석
+                                   }}
+                                   className="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-blue-50 hover:ring-1 ring-blue-200 transition-all group text-left"
+                                 >
+                                   <div>
+                                     <div className="flex items-center gap-2">
+                                       <span className="text-sm font-bold text-slate-700 group-hover:text-blue-600">{item.keyword}</span>
+                                       {item.totalSearch >= 1000 && item.totalSearch <= 30000 && (
+                                         <span className="text-[9px] font-bold bg-green-100 text-green-600 px-1.5 py-0.5 rounded">Green Zone</span>
+                                       )}
+                                     </div>
+                                     <div className="text-[10px] text-slate-400 mt-1 flex gap-2">
+                                       <span>검색 {item.totalSearch.toLocaleString()}</span>
+                                       <span>•</span>
+                                       <span>클릭 {item.totalClick}</span>
+                                     </div>
+                                   </div>
+                                   <div className={`text-[10px] font-bold px-2 py-1 rounded-lg ${
+                                     item.compIdx === 'LOW' ? 'bg-green-100 text-green-600' : 
+                                     item.compIdx === 'MID' ? 'bg-yellow-100 text-yellow-600' : 'bg-red-100 text-red-500'
+                                   }`}>
+                                     {item.compIdx}
+                                   </div>
+                                 </button>
+                               ))
+                             ) : (
+                               <div className="col-span-2 text-center py-4 text-sm text-slate-400 bg-slate-50 rounded-xl">
+                                 추천할 만한 연관 키워드가 없네요 😅 <br/> 다른 키워드로 시도해보세요!
+                               </div>
+                             )}
+                           </div>
+                        </div>
+
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {/* ✨ 가이드 입력 아코디언 */}
                 <div className="relative px-2">
@@ -457,36 +585,35 @@ function App() {
                      <span>AI에게 상세 가이드 주기 (선택사항)</span>
                    </button>
                    
-                  <AnimatePresence>
-                     {useGuide && (
-                       <motion.div
-                         initial={{ height: 0, opacity: 0 }}
-                         animate={{ height: 'auto', opacity: 1 }}
-                         exit={{ height: 0, opacity: 0 }}
-                         className="overflow-hidden"
-                       >
-                         <div className="relative">
-                           <textarea
-                             value={guide}
-                             onChange={(e) => setGuide(e.target.value)}
-                             placeholder="예시: '30대 직장인 말투로 써줘...' / '업체에서 준 가이드를 여기에 붙여넣으세요...'"
-                             className={`w-full mt-3 p-4 rounded-xl border bg-white/50 focus:bg-white text-sm text-slate-600 placeholder:text-slate-300 focus:outline-none focus:ring-2 resize-none h-40 transition-all ${themeStyles.border} ${themeStyles.focusRing}`}
-                           />
-                           
-                           {/* ✨ 글자 수 카운터 추가 */}
-                           <div className="flex justify-between items-center mt-2 px-1">
-                              <p className="text-[11px] text-slate-400">
-                                * 업체 가이드를 통째로 붙여넣으셔도 됩니다. (길이 제한 없음)
-                              </p>
-                              <div className="text-xs text-slate-400 font-medium bg-white/50 px-2 py-1 rounded-md border border-slate-100">
-                                📝 현재 <span className={`font-bold ${themeStyles.accentText}`}>{guide.length.toLocaleString()}</span>자
-                              </div>
-                           </div>
-                         </div>
-                       </motion.div>
-                     )}
-                   </AnimatePresence>
-
+                   <AnimatePresence>
+                      {useGuide && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="relative">
+                            <textarea
+                              value={guide}
+                              onChange={(e) => setGuide(e.target.value)}
+                              placeholder="예시: '30대 직장인 말투로 써줘...' / '업체에서 준 가이드를 여기에 붙여넣으세요...'"
+                              className={`w-full mt-3 p-4 rounded-xl border bg-white/50 focus:bg-white text-sm text-slate-600 placeholder:text-slate-300 focus:outline-none focus:ring-2 resize-none h-40 transition-all ${themeStyles.border} ${themeStyles.focusRing}`}
+                            />
+                            
+                            {/* ✨ 글자 수 카운터 */}
+                            <div className="flex justify-between items-center mt-2 px-1">
+                               <p className="text-[11px] text-slate-400">
+                                 * 업체 가이드를 통째로 붙여넣으셔도 됩니다. (길이 제한 없음)
+                               </p>
+                               <div className="text-xs text-slate-400 font-medium bg-white/50 px-2 py-1 rounded-md border border-slate-100">
+                                 📝 현재 <span className={`font-bold ${themeStyles.accentText}`}>{guide.length.toLocaleString()}</span>자
+                               </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                 </div>
               </div>
 

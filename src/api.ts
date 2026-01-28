@@ -95,3 +95,14 @@ export const generateBlogPost = async (
     throw error; 
   }
 };
+
+// ✨ [신규 추가] 3. 네이버 검색광고 API 연동 (키워드 분석)
+export const analyzeKeyword = async (keyword: string) => {
+  try {
+    const response = await axios.post('/api/searchAd', { keyword });
+    return response.data;
+  } catch (error) {
+    console.error("키워드 분석 실패:", error);
+    throw new Error("키워드 데이터를 가져오지 못했습니다.");
+  }
+};
