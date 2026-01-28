@@ -4,7 +4,7 @@ import {
   Sparkles, Search, Copy, Clock, Trash2, CheckCircle, RotateCcw, Menu, X, 
   Utensils, Plane, Shirt, Landmark, Smile, AlignLeft, Smartphone, Monitor, 
   Download, Image as ImageIcon, PenLine, Save, XCircle, UploadCloud, DownloadCloud, 
-  Package, MessageSquarePlus, BarChart3, MousePointerClick, AlertTriangle // ✨ 아이콘 추가
+  Package, MessageSquarePlus, BarChart3 // BarChart3 아이콘 추가
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
