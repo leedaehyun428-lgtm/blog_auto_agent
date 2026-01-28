@@ -90,8 +90,8 @@ export default async function handler(req, res) {
 
     // 2. 기본 필터링 (체급 제한)
     const candidates = processed.filter(item => {
-      // 검색량: 3,00 ~ 40,000 (대기업/테마파크 제외를 위해 상한선 조절)
-      if (item.totalSearch < 300 || item.totalSearch > 40000) return false;
+      // 검색량: 500 ~ 40,000 (대기업/테마파크 제외를 위해 상한선 조절)
+      if (item.totalSearch < 500 || item.totalSearch > 50000) return false;
       // 경쟁: HIGH 제외 (안전빵)
       if (item.compIdx === 'HIGH') return false;
       // 자기 자신 제외
