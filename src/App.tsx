@@ -106,6 +106,17 @@ function App() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);*/
+  
+  // 메뉴 바깥 클릭 시 닫기 기능
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Supabase DB 연동 로그인하면 DB에서 히스토리 가져오기
   useEffect(() => {
@@ -279,8 +290,9 @@ function App() {
             const parsedData = JSON.parse(e.target.result as string);
             if (Array.isArray(parsedData)) {
               setHistory(parsedData);
-              localStorage.setItem('blog_full_history', JSON.stringify(parsedData));
-              alert("성공적으로 복원되었습니다! 🎉");
+              // localStorage.setItem('blog_full_history', JSON.stringify(parsedData));
+              // 추후 기능 개발 필요
+              alert("화면에는 복원되었지만, DB에는 저장되지 않았습니다.");
             } else {
               alert("올바른 백업 파일이 아닙니다.");
             }
