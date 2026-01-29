@@ -424,7 +424,8 @@ function App() {
               {/* 테마 선택 */}
               <div className="mb-8">
                 <p className="text-center text-sm font-medium text-slate-400 mb-4">오늘의 포스팅 주제는 무엇인가요?</p>
-                <div className="grid grid-cols-6 gap-2 md:gap-3">
+                {/* ✨ 모바일: grid-cols-3 (3개씩), PC: grid-cols-6 (6개씩) */}
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
                   {THEMES.map((theme) => {
                     const Icon = theme.icon;
                     const isSelected = selectedTheme === theme.id;
@@ -450,10 +451,15 @@ function App() {
                 </div>
               </div>
 
-              {/* ✨ 검색창 및 분석 버튼 */}
+             {/* ✨ 검색창 & 분석 버튼 영역 */}
               <div className="space-y-6 mb-10">
-                <div className="flex gap-2 relative z-10">
-                  <div className="relative flex-1 group">
+                {/* flex-col: 모바일에서는 세로 배치 (검색창 위, 버튼 아래)
+                    md:flex-row: PC에서는 가로 배치 (한 줄)
+                */}
+                <div className="flex flex-col md:flex-row gap-3 relative z-10">
+                  
+                  {/* 검색창 영역 */}
+                  <div className="relative flex-1 group w-full">
                     <div className={`absolute inset-0 rounded-2xl bg-gradient-to-r ${isTestMode ? 'from-orange-300 to-yellow-400' : 'from-sky-300 to-blue-400'} blur opacity-20 group-hover:opacity-40 transition-opacity`}></div>
                     <input 
                       type="text" 
@@ -465,25 +471,28 @@ function App() {
                     />
                   </div>
                   
-                  {/* 📊 분석 버튼 */}
-                  <button 
-                    onClick={handleAnalyze}
-                    disabled={isAnalyzing || isLoading}
-                    className="px-4 py-4 bg-slate-800 text-white rounded-2xl font-bold shadow-lg hover:bg-slate-700 active:scale-95 disabled:opacity-50 transition-all flex flex-col items-center justify-center min-w-[80px]"
-                  >
-                    {isAnalyzing ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <BarChart3 className="w-6 h-6" />}
-                    <span className="text-[10px] mt-1 font-medium">분석</span>
-                  </button>
+                  {/* 버튼 영역 (모바일에서는 가로로 꽉 차게, PC에서는 내용물만큼만) */}
+                  <div className="flex gap-2 w-full md:w-auto">
+                      {/* 📊 분석 버튼 (모바일: flex-1로 반반 차지) */}
+                      <button 
+                        onClick={handleAnalyze}
+                        disabled={isAnalyzing || isLoading}
+                        className="flex-1 md:flex-none px-4 py-4 bg-slate-800 text-white rounded-2xl font-bold shadow-lg hover:bg-slate-700 active:scale-95 disabled:opacity-50 transition-all flex flex-col items-center justify-center min-w-[80px]"
+                      >
+                        {isAnalyzing ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <BarChart3 className="w-6 h-6" />}
+                        <span className="text-[10px] mt-1 font-medium">분석</span>
+                      </button>
 
-                  {/* ✨ 생성 버튼 */}
-                  <button 
-                    onClick={handleGenerate}
-                    disabled={isLoading}
-                    className={`px-6 py-4 text-white rounded-2xl font-bold shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50 transition-all flex flex-col items-center justify-center min-w-[80px] ${themeStyles.button}`}
-                  >
-                    {isLoading ? <Sparkles className="w-6 h-6 animate-spin" /> : <Search className="w-6 h-6" />}
-                    <span className="text-[10px] mt-1 font-medium">생성</span>
-                  </button>
+                      {/* ✨ 생성 버튼 (모바일: flex-1로 반반 차지) */}
+                      <button 
+                        onClick={handleGenerate}
+                        disabled={isLoading}
+                        className={`flex-1 md:flex-none px-6 py-4 text-white rounded-2xl font-bold shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50 transition-all flex flex-col items-center justify-center min-w-[80px] ${themeStyles.button}`}
+                      >
+                        {isLoading ? <Sparkles className="w-6 h-6 animate-spin" /> : <Search className="w-6 h-6" />}
+                        <span className="text-[10px] mt-1 font-medium">생성</span>
+                      </button>
+                  </div>
                 </div>
 
                 {/* 📊 분석 결과 리포트 (분석 완료 시 표시) */}
