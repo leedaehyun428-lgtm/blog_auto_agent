@@ -106,7 +106,7 @@ function App() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);*/
-  
+
   // 메뉴 바깥 클릭 시 닫기 기능
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -188,12 +188,16 @@ function App() {
   }, []);
 
   // ✨ [신규] 구글 로그인 핸들러
-  const handleLogin = async () => {
+const handleLogin = async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
+      options: {
+        // 핵심: 현재 브라우저의 주소(Origin)로 돌아오라고 명시
+        // 로컬에서는 localhost로, 배포환경에서는 vercel.app으로 자동 설정됨
+        redirectTo: window.location.origin 
+      }
     });
   };
-
   // ✨ [신규] 로그아웃 핸들러
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -540,53 +544,113 @@ function App() {
               <AnimatePresence>
                 {isMenuOpen && (
                   <motion.div 
-                    initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                    className="absolute right-0 top-full mt-3 w-64 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-white/50 p-2 z-50 overflow-hidden ring-1 ring-slate-900/5"
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute right-0 top-full mt-3 w-72 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-white/50 z-50 overflow-hidden ring-1 ring-slate-900/5 origin-top-right"
                   >
-                    <div className="px-4 py-3 border-b border-slate-100">
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Settings</p>
+                    
+                    {/* ✨ [1] 모바일 전용: 프로필 및 로그인 영역 (PC에서는 헤더에 있으므로 md:hidden) */}
+                    <div className="md:hidden px-5 py-4 bg-slate-50/80 border-b border-slate-100">
+                      {user ? (
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center gap-3">
+                            {user.user_metadata.avatar_url ? (
+                              <img src={user.user_metadata.avatar_url} alt="Profile" className="w-10 h-10 rounded-full border border-white shadow-sm" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 font-bold text-lg">
+                                {user.email?.[0].toUpperCase()}
+                              </div>
+                            )}
+                            <div className="flex flex-col">
+                              <span className="text-sm font-bold text-slate-800">
+                                {user.user_metadata.full_name || user.email?.split('@')[0]}님
+                              </span>
+                              <span className="text-[10px] text-slate-400">{user.email}</span>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={handleLogout}
+                            className="w-full py-2 text-xs font-bold bg-white border border-slate-200 rounded-lg text-slate-600 shadow-sm hover:bg-slate-50 transition-colors"
+                          >
+                            로그아웃
+                          </button>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="text-xs text-slate-400 mb-2 font-medium">로그인하고 기록을 저장하세요!</p>
+                          <button 
+                            onClick={handleLogin}
+                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-all active:scale-95"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24">
+                                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                            </svg>
+                            <span className="text-sm font-bold text-slate-700">구글 로그인</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ✨ [2] 모바일 전용: 바로가기 링크들 (md:hidden) */}
+                    <div className="md:hidden p-2 grid grid-cols-2 gap-1 border-b border-slate-100 bg-white">
+                        <a href={`https://blog.naver.com/${MY_BLOG_ID}`} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 transition-colors gap-1 text-slate-600">
+                           <img src="https://blog.naver.com/favicon.ico" className="w-5 h-5 opacity-70" alt="blog" />
+                           <span className="text-xs font-bold">내 블로그</span>
+                        </a>
+                         <a href={MY_INFLUENCER_URL} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 transition-colors gap-1 text-slate-600">
+                           <span className="text-lg">👑</span>
+                           <span className="text-xs font-bold">인플루언서</span>
+                        </a>
+                         <a href={`https://blog.naver.com/PostWriteForm.naver?blogId=${MY_BLOG_ID}`} target="_blank" rel="noreferrer" className={`col-span-2 flex items-center justify-center gap-2 p-3 rounded-xl hover:bg-blue-50 transition-colors ${themeStyles.accentText} font-bold bg-slate-50`}>
+                           <PenLine className="w-4 h-4" />
+                           <span className="text-xs">블로그 글쓰기 바로가기</span>
+                        </a>
                     </div>
                     
-                    {/* 토큰 모드 */}
-                    <button 
-                      onClick={() => setIsTestMode(!isTestMode)}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-xl hover:bg-slate-50 transition-colors group"
-                    >
-                      <div className="flex flex-col items-start">
-                        <span className={`text-sm font-bold ${isTestMode ? 'text-orange-500' : 'text-slate-600'}`}>
-                          {isTestMode ? '테스트 모드 (ON)' : '실전 모드 (OFF)'}
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          {isTestMode ? '토큰 미사용 / 가짜 데이터' : '실제 API 토큰 사용 / 과금 주의'}
-                        </span>                     
-                      </div>
-                      <div className={`w-9 h-5 rounded-full relative transition-colors ${isTestMode ? 'bg-orange-400' : 'bg-slate-200'}`}>
-                        <div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm absolute top-0.5 transition-all ${isTestMode ? 'left-5' : 'left-0.5'}`} />
-                      </div>
-                    </button>
+                    {/* ✨ [3] 기존 설정 메뉴들 (Settings) */}
+                    <div className="px-4 py-3 bg-white">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Settings</p>
+                      
+                      {/* 토큰 모드 */}
+                      <button 
+                        onClick={() => setIsTestMode(!isTestMode)}
+                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group"
+                      >
+                        <div className="flex flex-col items-start">
+                          <span className={`text-sm font-bold ${isTestMode ? 'text-orange-500' : 'text-slate-600'}`}>
+                            {isTestMode ? '테스트 모드 (ON)' : '실전 모드 (OFF)'}
+                          </span>
+                        </div>
+                        <div className={`w-9 h-5 rounded-full relative transition-colors ${isTestMode ? 'bg-orange-400' : 'bg-slate-200'}`}>
+                          <div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm absolute top-0.5 transition-all ${isTestMode ? 'left-5' : 'left-0.5'}`} />
+                        </div>
+                      </button>
 
-                    <div className="my-1 border-t border-slate-100" />
+                      <div className="my-1 border-t border-slate-100" />
 
-                    {/* 백업 및 복원 메뉴 */}
-                    <button onClick={exportHistory} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-colors text-sm text-slate-600">
-                      <DownloadCloud className="w-4 h-4 text-slate-400" /> 기록 백업하기
-                    </button>
-                    
-                    <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-colors text-sm text-slate-600">
-                      <UploadCloud className="w-4 h-4 text-slate-400" /> 기록 복원하기
-                    </button>
-                    <input type="file" ref={fileInputRef} onChange={importHistory} className="hidden" accept=".json" />
+                      {/* 백업 및 복원 메뉴 */}
+                      <button onClick={exportHistory} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors text-sm text-slate-600">
+                        <DownloadCloud className="w-4 h-4 text-slate-400" /> 기록 백업하기
+                      </button>
+                      
+                      <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors text-sm text-slate-600">
+                        <UploadCloud className="w-4 h-4 text-slate-400" /> 기록 복원하기
+                      </button>
+                      <input type="file" ref={fileInputRef} onChange={importHistory} className="hidden" accept=".json" />
 
-                    <div className="my-1 border-t border-slate-100" />
+                      <div className="my-1 border-t border-slate-100" />
 
-                    <button 
-                      onClick={clearHistory}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-red-50 text-red-500 transition-colors text-sm"
-                    >
-                      <Trash2 className="w-4 h-4" /> 기록 전체 삭제
-                    </button>
+                      <button 
+                        onClick={clearHistory}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 text-red-500 transition-colors text-sm"
+                      >
+                        <Trash2 className="w-4 h-4" /> 기록 전체 삭제
+                      </button>
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
