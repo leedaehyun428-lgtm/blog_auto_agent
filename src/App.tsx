@@ -9,6 +9,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
 import { searchInfo, generateBlogPost, analyzeKeyword, type ThemeType } from './api'; // ✨ analyzeKeyword 추가
+import { supabase } from './supabaseClient'; //DB 연동 추가
 
 const MY_BLOG_ID = 'leedh428';
 const MY_INFLUENCER_URL = 'https://in.naver.com/simsimpuri';
@@ -92,6 +93,7 @@ function App() {
     selection: "selection:bg-blue-200"
   };
 
+  /* localStorage 브라우저 캐시 사용하는 저장소 (DB로 변경)
   useEffect(() => {
     const savedHistory = localStorage.getItem('blog_full_history');
     if (savedHistory) setHistory(JSON.parse(savedHistory));
@@ -103,8 +105,91 @@ function App() {
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);*/
+
+  // Supabase DB 연동 로그인하면 DB에서 히스토리 가져오기
+  useEffect(() => {
+    // 1. 사용자 세션 확인
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) fetchHistory(session.user.id); // 👈 로그인 했으면 데이터 로드
+    });
+
+    // 2. 로그인 상태 변화 감지
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchHistory(session.user.id); // 👈 로그인 시 로드
+      } else {
+        setHistory([]); // 👈 로그아웃 시 화면 비우기
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
+    // Supabase DB에서 데이터 긁어오는 함수
+      const fetchHistory = async (userId: string) => {
+        const { data, error } = await supabase
+          .from('posts')
+          .select('*')
+          .order('created_at', { ascending: false }) // 최신순 정렬
+          .limit(10); // 10개만
+
+        if (error) console.error('Error fetching history:', error);
+        else if (data) {
+          // DB 컬럼명과 앱 내 타입이 약간 다를 수 있으니 매핑
+          const formatted: HistoryItem[] = data.map((item: any) => ({
+            id: item.id,
+            keyword: item.keyword,
+            content: item.content,
+            date: new Date(item.created_at).toLocaleDateString(),
+            theme: item.theme as ThemeType,
+            isTestMode: item.is_test_mode
+          }));
+          setHistory(formatted);
+        }
+      };
+
+
+  // 260129_Supabase cheak
+  useEffect(() => {
+    console.log("Checking Supabase connection...");
+    console.log("Supabase Client:", supabase);
+  }, []);
+
+  // ✨ 260129_사용자 로그인 상태
+  const [user, setUser] = useState<any>(null);
+
+  // ✨ [신규] 초기 실행 시 로그인 상태 확인
+  useEffect(() => {
+    // 1. 이미 로그인된 상태인지 확인
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    // 2. 로그인/로그아웃 상태 변화 감지 (실시간)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // ✨ [신규] 구글 로그인 핸들러
+  const handleLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+    });
+  };
+
+  // ✨ [신규] 로그아웃 핸들러
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    alert("로그아웃 되었습니다.");
+  };
+
+  /* local 사용 저장 로직 (DB 연동 후 미사용)
   const saveToHistory = (newKeyword: string, newContent: string) => {
     const newItem: HistoryItem = {
       id: Date.now(),
@@ -118,11 +203,59 @@ function App() {
     setHistory(updatedHistory);
     localStorage.setItem('blog_full_history', JSON.stringify(updatedHistory));
   };
+  */
 
+  // Supabase DB에 저장하는 함수
+  const saveToHistory = async (newKeyword: string, newContent: string) => {
+    // 1. 로그인 안 했으면 저장 안 함 (또는 로컬에만 하거나)
+    if (!user) {
+      alert("로그인 상태가 아니라서 히스토리에 저장되지 않았습니다! 😅");
+      return;
+    }
+
+    // Supabase DB insert
+    const { error } = await supabase
+      .from('posts')
+      .insert({
+        user_id: user.id,
+        keyword: newKeyword,
+        content: newContent,
+        theme: selectedTheme,
+        is_test_mode: isTestMode
+      });
+
+    if (error) {
+      console.error('저장 실패:', error);
+      alert("저장에 실패했습니다.");
+    } else {
+      // 3. 저장 성공하면 목록 다시 불러오기
+      fetchHistory(user.id);
+    }
+  };
+
+  /* local 사용 삭제 로직 (DB 연동 후 미사용)
   const clearHistory = () => {
     if(confirm('모든 기록을 삭제하시겠습니까?')) {
       setHistory([]);
       localStorage.removeItem('blog_full_history');
+    }
+  };
+  */
+
+  // Supabase DB에 삭제하는 함수
+  const clearHistory = async () => {
+    if (!user) return;
+    if (confirm('서버에 저장된 모든 기록을 삭제하시겠습니까?')) {
+      const { error } = await supabase
+        .from('posts')
+        .delete()
+        .eq('user_id', user.id); // 내 아이디로 된 글만 삭제
+
+      if (error) {
+        alert("삭제 중 오류가 발생했습니다.");
+      } else {
+        setHistory([]);
+      }
     }
   };
 
@@ -348,6 +481,40 @@ function App() {
                <a href={`https://blog.naver.com/PostWriteForm.naver?blogId=${MY_BLOG_ID}`} target="_blank" rel="noreferrer" className={`text-xs font-bold ${themeStyles.accentText} hover:opacity-80 transition-colors flex items-center gap-1`}>
                  글쓰기 →
                </a>
+               {/* 여기부터 구글 로그인 로직 */}
+               {user ? (
+                 <div className="flex items-center gap-3">
+                   <div className="flex items-center gap-2">
+                     {/* 프로필 이미지 (있으면) */}
+                     {user.user_metadata.avatar_url && (
+                       <img src={user.user_metadata.avatar_url} alt="Profile" className="w-6 h-6 rounded-full border border-slate-200" />
+                     )}
+                     <span className="text-xs font-bold text-slate-700">
+                       {user.user_metadata.full_name || user.email?.split('@')[0]}님
+                     </span>
+                   </div>
+                   <button 
+                     onClick={handleLogout}
+                     className="text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-600 px-2 py-1 rounded-md transition-colors font-bold"
+                   >
+                     로그아웃
+                   </button>
+                 </div>
+               ) : (
+                 <button 
+                   onClick={handleLogin}
+                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 shadow-sm hover:bg-slate-50 transition-all active:scale-95 group`}
+                 >
+                   {/* 구글 G 로고 (SVG) */}
+                   <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                     <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                     <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                   </svg>
+                   <span className="text-xs font-bold text-slate-600 group-hover:text-slate-800">구글 로그인</span>
+                 </button>
+               )}
             </div>
 
             <div className="relative" ref={menuRef}>
