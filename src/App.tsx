@@ -198,6 +198,15 @@ const handleLogin = async () => {
       }
     });
   };
+
+  // ✨ 카카오 로그인 핸들러
+  const handleKakaoLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'kakao',
+      options: { redirectTo: window.location.origin }
+    });
+  };
+
   // ✨ [신규] 로그아웃 핸들러
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -223,10 +232,7 @@ const handleLogin = async () => {
   // Supabase DB에 저장하는 함수
   const saveToHistory = async (newKeyword: string, newContent: string) => {
     // 1. 로그인 안 했으면 저장 안 함 (또는 로컬에만 하거나)
-    if (!user) {
-      alert("로그인 상태가 아니라서 히스토리에 저장되지 않았습니다! 😅");
-      return;
-    }
+    if (!user) return;
 
     // Supabase DB insert
     const { error } = await supabase
@@ -327,12 +333,21 @@ const handleLogin = async () => {
     setIsEditing(false);
   };
 
-  // ✨ [신규] 키워드 분석 핸들러
+// ✨ [신규] 키워드 분석 핸들러
   const handleAnalyze = async () => {
+    // 🔒 [문지기] 로그인 안 했으면 여기서 멈춤!
+    if (!user) {
+      if (confirm("로그인이 필요한 서비스입니다.\n로그인하고 무료로 분석해볼까요?")) {
+        handleLogin();
+      }
+      return; // 👈 핵심: 여기서 함수를 강제로 끝내버림 (아래 코드 실행 X)
+    }
+
     if (!keyword.trim()) {
       alert("키워드를 입력해주세요!");
       return;
     }
+
     setIsAnalyzing(true);
     setAnalysisData(null); // 기존 결과 초기화
 
@@ -346,8 +361,76 @@ const handleLogin = async () => {
     }
   };
 
+  // 📊 [핵심] 사용량 체크 및 카운트 증가 함수
+  const checkAndIncrementUsage = async (userId: string): Promise<boolean> => {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD 형식 (UTC 기준)
+
+    // 1. 내 정보(Profile) 가져오기 (Select)
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error || !profile) {
+      console.error("프로필 조회 실패:", error);
+      return false; // 안전을 위해 실패 시 차단
+    }
+
+    // 2. 날짜가 지났으면 초기화 (Lazy Reset)
+    // DB에 저장된 날짜와 오늘이 다르면 -> 카운트 0으로 리셋
+    if (profile.last_used_date !== today) {
+      const { error: resetError } = await supabase
+        .from('profiles')
+        .update({ daily_count: 0, last_used_date: today })
+        .eq('id', userId);
+      
+      if (resetError) console.error("날짜 리셋 실패", resetError);
+      
+      // 메모리 상의 프로필도 0으로 초기화해줌
+      profile.daily_count = 0; 
+    }
+
+    // 3. 한도 체크 (Validation)
+    if (profile.daily_count >= profile.max_daily_count) {
+      alert(`오늘 무료 사용량(${profile.max_daily_count}회)을 모두 쓰셨네요! 😭\n내일 다시 이용해주세요!`);
+      return false; // 사용 불가
+    }
+
+    // 4. 사용량 1 증가 (Increment)
+    // 오라클과 달리 여기서는 '현재값 + 1'을 직접 계산해서 업데이트합니다.
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ daily_count: profile.daily_count + 1 })
+      .eq('id', userId);
+
+    if (updateError) {
+      console.error("카운트 증가 실패", updateError);
+      return false;
+    }
+
+    return true; // 사용 가능!
+  };
+
   const handleGenerate = async () => {
-    if (!keyword) return;
+      // 1. 비로그인 차단
+      if (!user) {
+          if (confirm("로그인이 필요한 서비스입니다.\n로그인하고 이용해보세요!")) {
+            // 모달을 띄우거나 로그인 유도
+          }
+          return;
+      }
+
+      // 사용량 체크
+      // checkAndIncrementUsage 함수가 false를 리턴하면(한도초과) 여기서 멈춤
+      const isAllowed = await checkAndIncrementUsage(user.id);
+      if (!isAllowed) return;
+    
+    if (!keyword.trim()) {
+      alert("키워드를 입력해주세요!");
+      return;
+    }
+
     setIsLoading(true);
     setResult('');
     setCopyStatus('idle');
@@ -531,7 +614,18 @@ const handleLogin = async () => {
                    <span className="text-xs font-bold text-slate-600 group-hover:text-slate-800">구글 로그인</span>
                  </button>
                )}
-            </div>
+
+          {/* 카카오 로그인 버튼 */}
+            <button 
+              onClick={handleKakaoLogin}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FEE500] border border-[#FEE500] shadow-sm hover:bg-[#FDD835] transition-all active:scale-95 group text-slate-900"
+            >
+              {/* 카카오 말풍선 아이콘 SVG */}
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 3C5.925 3 1 6.925 1 11.772c0 2.91 1.879 5.48 4.788 7.02-.215.79-.785 2.87-0.9 3.32-.14.545.2.535.42.355.285-.235 4.545-3.085 5.17-3.52.505.075 1.025.115 1.522.115 6.075 0 11-3.925 11-8.772C23 6.925 18.075 3 12 3z"/>
+              </svg>
+              <span className="text-xs font-bold text-slate-900/90">카카오 로그인</span>
+            </button>
 
             <div className="relative" ref={menuRef}>
               <button 
@@ -540,6 +634,9 @@ const handleLogin = async () => {
               >
                 {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>
+
+              
+            </div>
 
               <AnimatePresence>
                 {isMenuOpen && (
