@@ -10,6 +10,8 @@ import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
 import { searchInfo, generateBlogPost, analyzeKeyword, type ThemeType } from './api'; // ✨ analyzeKeyword 추가
 import { supabase } from './supabaseClient'; //DB 연동 추가
+import AdminPage from './AdminPage'; // 파일 import
+import { UserCog } from 'lucide-react'; // 아이콘 import
 
 const MY_BLOG_ID = 'leedh428';
 const MY_INFLUENCER_URL = 'https://in.naver.com/simsimpuri';
@@ -67,6 +69,15 @@ function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [copyStatus, setCopyStatus] = useState('idle');
 
+  const [exposureGuide, setExposureGuide] = useState<{
+  charCount: number;
+  imgCount: number;
+  keywordCount: number;
+} | null>(null);
+
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false); // 내가 관리자인지 여부
+
   const themeStyles = isTestMode ? {
     bg: "from-orange-50 via-amber-50 to-yellow-50",
     containerBorder: "border-orange-100",
@@ -118,21 +129,42 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Supabase DB 연동 로그인하면 DB에서 히스토리 가져오기
+// 관리자 체크 로직 (수정됨)
+  const checkAdmin = async (id: string) => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('grade')
+      .eq('id', id)
+      .single();
+
+    if (data && data.grade === 'admin') {
+      setIsAdmin(true);
+    } else {
+      setIsAdmin(false);
+      setShowAdmin(false); // ✨ [추가] 관리자 아니면 관리자 창도 강제로 닫기!
+    }
+  };
+
+// Supabase DB 연동 및 로그인 상태 감지
   useEffect(() => {
-    // 1. 사용자 세션 확인
+    // 1. 페이지 로드 시 세션 확인
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      if (session?.user) fetchHistory(session.user.id); // 👈 로그인 했으면 데이터 로드
+      if (session?.user) {
+        fetchHistory(session.user.id);
+        checkAdmin(session.user.id); // ✅ 여긴 잘 하셨습니다.
+      }
     });
 
-    // 2. 로그인 상태 변화 감지
+    // 2. 로그인/로그아웃 상태 변화 감지 (실시간)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchHistory(session.user.id); // 👈 로그인 시 로드
+        fetchHistory(session.user.id);
+        checkAdmin(session.user.id); // 🚨 [수정] 이 줄이 빠져 있었습니다! 로그인 직후 관리자 체크 실행
       } else {
-        setHistory([]); // 👈 로그아웃 시 화면 비우기
+        setHistory([]);
+        setIsAdmin(false); // 🚨 [수정] 로그아웃 하면 관리자 권한도 회수해야 함
       }
     });
 
@@ -350,35 +382,68 @@ const handleLogin = async () => {
 
     setIsAnalyzing(true);
     setAnalysisData(null); // 기존 결과 초기화
+    setExposureGuide(null); // 초기화
 
     try {
-      const data = await analyzeKeyword(keyword);
-      setAnalysisData(data);
+      // 1. 기존 키워드 분석 (네이버 광고 API)
+      const keywordData = await analyzeKeyword(keyword);
+      setAnalysisData(keywordData);
+
+      // 2. ✨ [신규] 상위 노출 전략 분석 (우리가 만든 API)
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword })
+      });
+      const guideData = await response.json();
+      
+      setExposureGuide({
+        charCount: guideData.averageCharCount,
+        imgCount: guideData.averageImageCount,
+        keywordCount: guideData.keywordCount
+      });
+
     } catch (error) {
-      alert("분석에 실패했습니다. API 키 설정을 확인하거나 잠시 후 시도해주세요.");
+      alert("분석에 실패했습니다.");
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  // 📊 [핵심] 사용량 체크 및 카운트 증가 함수
+// 📊 [핵심] 사용량 체크 및 카운트 증가 함수 (수정됨: 장부 없으면 자동 생성)
   const checkAndIncrementUsage = async (userId: string): Promise<boolean> => {
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD 형식 (UTC 기준)
+    const today = new Date().toISOString().split('T')[0];
 
-    // 1. 내 정보(Profile) 가져오기 (Select)
-    const { data: profile, error } = await supabase
+    // 1. 내 정보(Profile) 가져오기
+    let { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single();
 
-    if (error || !profile) {
-      console.error("프로필 조회 실패:", error);
-      return false; // 안전을 위해 실패 시 차단
+    // 🚨 [수정] 프로필이 없으면(기존 유저) 즉시 생성 시도
+    if (!profile) {
+      console.log("프로필 없음. 신규 생성 시도...");
+      const { data: newProfile, error: createError } = await supabase
+        .from('profiles')
+        .insert({ id: userId, daily_count: 0, max_daily_count: 2 })
+        .select()
+        .single();
+      
+      if (createError) {
+        console.error("프로필 생성 실패:", createError);
+        alert("일시적인 오류입니다. 잠시 후 다시 시도해주세요.");
+        return false;
+      }
+      profile = newProfile; // 방금 만든 프로필로 교체
     }
 
-    // 2. 날짜가 지났으면 초기화 (Lazy Reset)
-    // DB에 저장된 날짜와 오늘이 다르면 -> 카운트 0으로 리셋
+    if (error && !profile) {
+      console.error("프로필 조회 실패:", error);
+      return false;
+    }
+
+    // 2. 날짜가 지났으면 초기화
     if (profile.last_used_date !== today) {
       const { error: resetError } = await supabase
         .from('profiles')
@@ -386,19 +451,16 @@ const handleLogin = async () => {
         .eq('id', userId);
       
       if (resetError) console.error("날짜 리셋 실패", resetError);
-      
-      // 메모리 상의 프로필도 0으로 초기화해줌
       profile.daily_count = 0; 
     }
 
-    // 3. 한도 체크 (Validation)
+    // 3. 한도 체크
     if (profile.daily_count >= profile.max_daily_count) {
       alert(`오늘 무료 사용량(${profile.max_daily_count}회)을 모두 쓰셨네요! 😭\n내일 다시 이용해주세요!`);
-      return false; // 사용 불가
+      return false; 
     }
 
-    // 4. 사용량 1 증가 (Increment)
-    // 오라클과 달리 여기서는 '현재값 + 1'을 직접 계산해서 업데이트합니다.
+    // 4. 사용량 1 증가
     const { error: updateError } = await supabase
       .from('profiles')
       .update({ daily_count: profile.daily_count + 1 })
@@ -409,54 +471,54 @@ const handleLogin = async () => {
       return false;
     }
 
-    return true; // 사용 가능!
+    return true; 
   };
 
-  const handleGenerate = async () => {
+const handleGenerate = async () => {
       // 1. 비로그인 차단
       if (!user) {
-          if (confirm("로그인이 필요한 서비스입니다.\n로그인하고 이용해보세요!")) {
-            // 모달을 띄우거나 로그인 유도
+          if (confirm("로그인이 필요한 서비스입니다.\n로그인하고 고퀄리티 글을 생성해볼까요? ✨")) {
+            handleLogin(); // 👈 아까 이게 빠져 있었습니다!
           }
           return;
       }
 
-      // 사용량 체크
-      // checkAndIncrementUsage 함수가 false를 리턴하면(한도초과) 여기서 멈춤
+      // 2. 사용량 체크 (여기서 false 나오면 중단)
       const isAllowed = await checkAndIncrementUsage(user.id);
-      if (!isAllowed) return;
+      if (!isAllowed) return; 
     
-    if (!keyword.trim()) {
-      alert("키워드를 입력해주세요!");
-      return;
-    }
+      if (!keyword.trim()) {
+        alert("키워드를 입력해주세요!");
+        return;
+      }
 
-    setIsLoading(true);
-    setResult('');
-    setCopyStatus('idle');
-    try {
-      setStep('searching');
-      const searchData = await searchInfo(keyword, isTestMode, selectedTheme);
+      setIsLoading(true);
+      setResult('');
+      setCopyStatus('idle');
       
-      setStep('writing');
-      const blogPost = await generateBlogPost(
-        keyword, 
-        searchData, 
-        selectedTheme, 
-        useGuide ? guide : undefined
-      );
-      
-      setResult(blogPost);
-      setResultIsTestMode(isTestMode);
-      setStep('done');
-      saveToHistory(keyword, blogPost);
-    } catch (error) {
-      console.error(error);
-      alert("오류가 발생했어요. 다시 시도해주세요!");
-      setStep('idle');
-    } finally {
-      setIsLoading(false);
-    }
+      try {
+        setStep('searching');
+        const searchData = await searchInfo(keyword, isTestMode, selectedTheme);
+        
+        setStep('writing');
+        const blogPost = await generateBlogPost(
+          keyword, 
+          searchData, 
+          selectedTheme, 
+          useGuide ? guide : undefined
+        );
+        
+        setResult(blogPost);
+        setResultIsTestMode(isTestMode);
+        setStep('done');
+        saveToHistory(keyword, blogPost);
+      } catch (error) {
+        console.error(error);
+        alert("오류가 발생했어요. 다시 시도해주세요!");
+        setStep('idle');
+      } finally {
+        setIsLoading(false);
+      }
   };
 
   const handleDownloadFile = () => {
@@ -652,7 +714,17 @@ const handleLogin = async () => {
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                     className="absolute right-0 top-full mt-3 w-72 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-white/50 z-50 overflow-hidden ring-1 ring-slate-900/5 origin-top-right"
                   >
-                    
+                  {/* ✨ 관리자 버튼 (isAdmin이 true일 때만 보임) */}
+                  {isAdmin && (
+                    <button 
+                      onClick={() => setShowAdmin(true)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 mt-2 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 transition-colors shadow-lg"
+                    >
+                      <UserCog className="w-4 h-4" />
+                      관리자 페이지 열기
+                    </button>
+                  )}
+
                     {/* [모바일 전용] 프로필 및 로그인 영역 */}
                     <div className="md:hidden px-5 py-4 bg-slate-50/80 border-b border-slate-100">
                       {user ? (
@@ -937,6 +1009,46 @@ const handleLogin = async () => {
                   )}
                 </AnimatePresence>
 
+                {/* ... 기존 키워드 분석 결과 아래에 추가 ... */}
+
+                {/* 🏆 상위 노출 전략 가이드 (New) */}
+                {exposureGuide && (
+                  <div className="mt-4 pt-4 border-t border-slate-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="bg-red-500 text-white p-1 rounded-md">
+                        <BarChart3 className="w-4 h-4" />
+                      </div>
+                      <span className="text-sm font-bold text-slate-700">상위 노출 공략집 (TOP 5 분석)</span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <p className="text-[10px] text-slate-400 mb-1">목표 글자수</p>
+                        <p className="text-lg font-black text-slate-700">{exposureGuide.charCount.toLocaleString()}</p>
+                        <p className="text-[9px] text-blue-500 font-bold">2,000자 이상</p>
+                      </div>
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <p className="text-[10px] text-slate-400 mb-1">사진 개수</p>
+                        <p className="text-lg font-black text-slate-700">{exposureGuide.imgCount}장</p>
+                        <p className="text-[9px] text-blue-500 font-bold">15장 이상 권장</p>
+                      </div>
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <p className="text-[10px] text-slate-400 mb-1">키워드 반복</p>
+                        <p className="text-lg font-black text-slate-700">{exposureGuide.keywordCount}회</p>
+                        <p className="text-[9px] text-blue-500 font-bold">자연스럽게</p>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-3 text-[10px] text-slate-400 bg-slate-100 p-2 rounded-lg flex items-center gap-2">
+                      <span>💡</span>
+                      <span>
+                        상위 블로거들은 평균 <b>{exposureGuide.charCount}자</b>를 쓰고 있습니다. 
+                        비슷한 분량으로 작성하면 노출 확률이 올라갑니다!
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* ✨ 가이드 입력 아코디언 */}
                 <div className="relative px-2">
                    <button 
@@ -1153,6 +1265,14 @@ const handleLogin = async () => {
           </div>
         </div>
       </div>
+{/* ✨ 4. 관리자 페이지 모달 (Props 추가됨!) */}
+      {showAdmin && user && (
+        <AdminPage 
+          onClose={() => setShowAdmin(false)} 
+          currentUserId={user.id} // ✨ 내 ID 전달
+          onMyGradeChanged={() => checkAdmin(user.id)} // ✨ 내 등급 다시 체크해! 라고 함수 전달
+        />
+      )}
     </div>
   );
 }
