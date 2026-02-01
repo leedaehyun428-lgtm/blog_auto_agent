@@ -410,10 +410,10 @@ const handleLogin = async () => {
     }
   };
 
-// 📊 [핵심] 사용량 체크 및 카운트 증가 함수 (수정됨: 장부 없으면 자동 생성)
+// 📊 사용량 체크 및 카운트 증가 함수 (수정됨: 장부 없으면 자동 생성)
   const checkAndIncrementUsage = async (userId: string): Promise<boolean> => {
-    const today = new Date().toISOString().split('T')[0];
-
+    // 한국시간대로 리셋 시간 변경 (00시 초기화)
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
     // 1. 내 정보(Profile) 가져오기
     let { data: profile, error } = await supabase
       .from('profiles')
