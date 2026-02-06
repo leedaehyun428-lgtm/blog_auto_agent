@@ -719,7 +719,7 @@ const handleGenerate = async () => {
           </div>
           <div className="absolute bottom-16 right-16 flex items-center gap-4 opacity-50">
             <div className={`w-5 h-5 rounded-full ${isTestMode ? 'bg-orange-500' : 'bg-blue-500'}`}></div>
-            <span className="text-4xl font-bold text-slate-400 tracking-widest">Blog Master AI</span>
+            <span className="text-4xl font-bold text-slate-400 tracking-widest">Briter AI</span>
           </div>
         </div>
       </div>
@@ -734,7 +734,7 @@ const handleGenerate = async () => {
               <Sparkles className="w-5 h-5" fill="currentColor" />
             </div>
             <div>
-              <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">Blog Master</h1>
+              <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">Briter AI</h1>
               <p className={`text-[10px] font-bold tracking-widest uppercase ${themeStyles.subText}`}>
                 {isTestMode ? 'Test Mode On' : 'AI Writing Assistant'}
               </p>
@@ -1441,7 +1441,7 @@ const handleGenerate = async () => {
                     {/* 하단 정보 */}
                     <div className="mt-10 pt-6 border-t border-dashed border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-slate-400">
                         <div className="flex flex-col gap-1 text-center md:text-left">
-                          <span className="opacity-80">Blog Master AI가 작성한 초안입니다. ({resultIsTestMode ? '테스트 모드' : '실전 모드'})</span>
+                          <span className="opacity-80">Briter AI가 작성한 초안입니다. ({resultIsTestMode ? '테스트 모드' : '실전 모드'})</span>
                           <span className={`font-bold ${themeStyles.accentText} tracking-tight`}>
                             Copyright © Simsimpuri All Rights Reserved.
                           </span>
