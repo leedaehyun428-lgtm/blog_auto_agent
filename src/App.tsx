@@ -34,6 +34,12 @@ const THEMES: { id: ThemeType; label: string; icon: any }[] = [
   { id: 'daily', label: '일상/생각', icon: Smile },
 ];
 
+const DEFAULT_PROMPTS = [
+  { id: 'preset_1', title: '📢 [기본] 친근한 리뷰어', system_prompt: '너는 20대 후반의 친근하고 활발한 블로거야. 이모티콘을 적절히 섞어서("ㅎㅎ", "ㅠㅠ" 등) 생동감 있게 작성해줘. 독자에게 말을 걸듯이 해요체를 사용해.' },
+  { id: 'preset_2', title: '🧐 [기본] 전문적인 분석가', system_prompt: '너는 IT/테크/금융 전문 에디터야. 신뢰감을 주는 "하십시오"체와 "해요"체를 섞어서 정중하게 작성해. 객관적인 사실과 숫자를 강조해서 글을 써줘.' },
+  { id: 'preset_3', title: '✨ [기본] 감성 인스타그래머', system_prompt: '너는 감성적인 사진과 글을 즐기는 인스타그래머야. 문장은 짧고 간결하게, 여운을 남기는 말투로 작성해. #해시태그를 센스 있게 배치해줘.' },
+];
+
 function App() {
   const [keyword, setKeyword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -1176,13 +1182,40 @@ const handleGenerate = async () => {
                             <div className="flex gap-2 mb-2 mt-2">
                               <select 
                                 value={selectedPromptId}
-                                onChange={handleSelectPrompt}
-                                className="flex-1 p-2 text-xs border rounded-lg bg-white focus:ring-2 focus:ring-blue-200 outline-none"
+                                onChange={(e) => {
+                                  const pid = e.target.value;
+                                  setSelectedPromptId(pid);
+                                  if (!pid) { setGuide(''); return; }
+
+                                  // 1. 내 저장 목록에서 찾기
+                                  let selected = prompts.find(p => p.id === pid);
+                                  // 2. 없으면 기본 프리셋에서 찾기
+                                  if (!selected) selected = DEFAULT_PROMPTS.find(p => p.id === pid);
+
+                                  if (selected) {
+                                    setGuide(selected.system_prompt);
+                                    setUseGuide(true);
+                                  }
+                                }}
+                                className="..."
                               >
                                 <option value="">📋 저장된 말투 불러오기...</option>
-                                {prompts.map(p => (
-                                  <option key={p.id} value={p.id}>{p.title}</option>
-                                ))}
+                                
+                                {/* ✨ [추가] 기본 제공 프리셋 */}
+                                <optgroup label="✨ Briter AI 추천 프리셋">
+                                  {DEFAULT_PROMPTS.map(p => (
+                                    <option key={p.id} value={p.id}>{p.title}</option>
+                                  ))}
+                                </optgroup>
+
+                                {/* 기존 내 말투 목록 */}
+                                {prompts.length > 0 && (
+                                  <optgroup label="📂 내 저장 목록">
+                                    {prompts.map(p => (
+                                      <option key={p.id} value={p.id}>{p.title}</option>
+                                    ))}
+                                  </optgroup>
+                                )}
                               </select>
 
                               {/* ✨ [삭제] 버튼 추가: 선택된 게 있을 때만 보임 */}
