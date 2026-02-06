@@ -77,6 +77,12 @@ function App() {
 
   const [showAdmin, setShowAdmin] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false); // 내가 관리자인지 여부
+  
+  // 260206_말투 불러오기, 저장하기 추가 함수
+  const [prompts, setPrompts] = useState<any[]>([]); // 저장된 말투 목록
+  const [selectedPromptId, setSelectedPromptId] = useState(''); // 선택된 말투 ID
+  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false); // 말투 저장 모달
+  const [newPromptTitle, setNewPromptTitle] = useState(''); // 새 말투 제목
 
   const themeStyles = isTestMode ? {
     bg: "from-orange-50 via-amber-50 to-yellow-50",
@@ -152,7 +158,8 @@ function App() {
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchHistory(session.user.id);
-        checkAdmin(session.user.id); // ✅ 여긴 잘 하셨습니다.
+        checkAdmin(session.user.id);
+        fetchPrompts();
       }
     });
 
@@ -161,10 +168,11 @@ function App() {
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchHistory(session.user.id);
-        checkAdmin(session.user.id); // 🚨 [수정] 이 줄이 빠져 있었습니다! 로그인 직후 관리자 체크 실행
+        checkAdmin(session.user.id);
       } else {
-        setHistory([]);
-        setIsAdmin(false); // 🚨 [수정] 로그아웃 하면 관리자 권한도 회수해야 함
+      setHistory([]);
+      setPrompts([]); // ✨ [추가] 로그아웃 시 말투 목록 비우기
+      setIsAdmin(false);
       }
     });
 
@@ -363,6 +371,10 @@ const handleLogin = async () => {
     setAnalysisData(null); // 분석 데이터 초기화
     setIsMobileView(false);
     setIsEditing(false);
+
+    //가이드 입력창 초기화 로직
+    setGuide('');       // 1. 입력된 텍스트 싹 지우기
+    setUseGuide(false); // 2. (선택사항) 아코디언 메뉴도 다시 접어두기
   };
 
 // ✨ [신규] 키워드 분석 핸들러
@@ -474,6 +486,94 @@ const handleLogin = async () => {
     return true; 
   };
 
+
+  // 260206_1. 내 말투 목록 불러오기
+    const fetchPrompts = async () => {
+      const { data, error } = await supabase
+        .from('user_prompts')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (data) setPrompts(data);
+    };
+
+  // 2. 현재 입력된 가이드 저장하기
+  const handleSavePrompt = async () => {
+    if (!user) return alert("로그인이 필요합니다.");
+    if (!guide.trim()) return alert("저장할 내용이 없습니다.");
+    if (!newPromptTitle.trim()) return alert("말투의 별명을 입력해주세요 (예: 맛집용)");
+
+    const { error } = await supabase.from('user_prompts').insert({
+      user_id: user.id,
+      title: newPromptTitle,
+      system_prompt: guide,
+    });
+
+    if (error) {
+      alert("저장 실패 ㅠㅠ");
+    } else {
+      alert("저장되었습니다!");
+      setNewPromptTitle('');
+      setIsPromptModalOpen(false);
+      fetchPrompts(); // 목록 갱신
+    }
+  };
+
+  // 🗑️ 1. 선택된 말투 삭제하기
+  const handleDeletePrompt = async () => {
+    if (!selectedPromptId) return alert("삭제할 말투를 선택해주세요.");
+    if (!confirm("정말 이 말투를 삭제하시겠습니까?")) return;
+
+    const { error } = await supabase
+      .from('user_prompts')
+      .delete()
+      .eq('id', selectedPromptId);
+
+    if (error) {
+      alert("삭제 실패");
+    } else {
+      alert("삭제되었습니다.");
+      setSelectedPromptId(''); // 선택 초기화
+      setGuide(''); // 입력창 비우기
+    }
+  };
+
+  // 🗑️ 2. 히스토리 개별 삭제하기
+  const deleteHistoryItem = async (e: React.MouseEvent, itemId: number) => {
+    e.stopPropagation(); // 🚨 중요: 부모 버튼 클릭(불러오기) 방지!
+    
+    if (!confirm("이 기록을 삭제하시겠습니까?")) return;
+
+    const { error } = await supabase
+      .from('posts')
+      .delete()
+      .eq('id', itemId);
+
+    if (error) {
+      alert("삭제 실패");
+    } else {
+      if(user) fetchHistory(user.id); // 목록 갱신
+    }
+  };
+
+  // 3. 말투 선택 시 인풋창에 반영
+  const handleSelectPrompt = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const promptId = e.target.value;
+    setSelectedPromptId(promptId);
+    
+    if (promptId === '') {
+      setGuide(''); // 선택 해제 시 비움
+      return;
+    }
+
+    const selected = prompts.find(p => p.id === promptId);
+    if (selected) {
+      setGuide(selected.system_prompt);
+      setUseGuide(true); // 가이드 창 자동으로 열어주기
+    }
+  };
+
+
 const handleGenerate = async () => {
       // 1. 비로그인 차단
       if (!user) {
@@ -562,7 +662,8 @@ const handleGenerate = async () => {
         .replace(/^\||\|$/gm, '')
         .replace(/\|/g, ' ')
         .replace(/^---$/gm, '')
-        .replace(/\n{3,}/g, '\n\n');
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/\\#/g, '#');
 
       await navigator.clipboard.writeText(cleanText);
       setCopyStatus('copied');
@@ -1071,6 +1172,38 @@ const handleGenerate = async () => {
                           className="overflow-hidden"
                         >
                           <div className="relative">
+                             {/* ✨ [추가된 부분] 말투 선택 및 저장 영역 */}
+                            <div className="flex gap-2 mb-2 mt-2">
+                              <select 
+                                value={selectedPromptId}
+                                onChange={handleSelectPrompt}
+                                className="flex-1 p-2 text-xs border rounded-lg bg-white focus:ring-2 focus:ring-blue-200 outline-none"
+                              >
+                                <option value="">📋 저장된 말투 불러오기...</option>
+                                {prompts.map(p => (
+                                  <option key={p.id} value={p.id}>{p.title}</option>
+                                ))}
+                              </select>
+
+                              {/* ✨ [삭제] 버튼 추가: 선택된 게 있을 때만 보임 */}
+                              {selectedPromptId && (
+                                <button 
+                                  onClick={handleDeletePrompt}
+                                  className="px-3 py-1 bg-red-100 hover:bg-red-200 rounded-lg text-xs font-bold text-red-500 transition-colors"
+                                  title="선택한 말투 삭제"
+                                >
+                                  삭제
+                                </button>
+                              )}
+                              
+                              <button 
+                                onClick={() => setIsPromptModalOpen(true)}
+                                className="px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-bold text-slate-600 transition-colors"
+                              >
+                                + 저장
+                              </button>
+                            </div>
+
                             <textarea
                               value={guide}
                               onChange={(e) => setGuide(e.target.value)}
@@ -1094,6 +1227,29 @@ const handleGenerate = async () => {
                 </div>
               </div>
 
+              {/* ✨ [추가] 말투 저장 팝업 (모달) */}
+              {isPromptModalOpen && (
+                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+                  <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-fade-in-up">
+                    <h3 className="text-lg font-bold text-slate-800 mb-2">나만의 말투 저장</h3>
+                    <p className="text-xs text-slate-500 mb-4">현재 작성한 가이드를 저장해두고 계속 쓰세요!</p>
+                    
+                    <input 
+                      type="text" 
+                      placeholder="말투 이름 (예: 20대 감성, 맛집 전문가)" 
+                      value={newPromptTitle}
+                      onChange={(e) => setNewPromptTitle(e.target.value)}
+                      className="w-full p-3 border rounded-xl mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    
+                    <div className="flex gap-2">
+                      <button onClick={() => setIsPromptModalOpen(false)} className="flex-1 py-3 bg-slate-100 rounded-xl text-sm font-bold text-slate-600">취소</button>
+                      <button onClick={handleSavePrompt} className="flex-1 py-3 bg-slate-800 rounded-xl text-sm font-bold text-white">저장하기</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 히스토리 */}
               {history.length > 0 && !isLoading && (
                 <div className="animate-fade-in-up px-2">
@@ -1102,16 +1258,26 @@ const handleGenerate = async () => {
                       <Clock className="w-3 h-3" /> Recent Drafts
                     </div>
                   </div>
+                  {/* 히스토리 영역 수정 */}
                   <div className="flex flex-wrap gap-2">
                     {history.map((item) => (
-                      <button
+                      <div // button을 div로 감싸거나, button 안에 로직 수정
                         key={item.id}
-                        onClick={() => loadFromHistory(item)}
-                        className={`px-4 py-2 bg-white/60 hover:bg-white border border-white/50 rounded-full text-sm text-slate-500 shadow-sm hover:shadow-md transition-all flex items-center gap-2 group hover:${themeStyles.border}`}
+                        className={`relative pl-4 pr-2 py-2 bg-white/60 hover:bg-white border border-white/50 rounded-full text-sm text-slate-500 shadow-sm hover:shadow-md transition-all flex items-center gap-2 group hover:${themeStyles.border} cursor-pointer`}
+                        onClick={() => loadFromHistory(item)} // 클릭하면 불러오기
                       >
                         <span className={`w-1.5 h-1.5 rounded-full bg-slate-300 transition-colors group-hover:${item.isTestMode ? 'bg-orange-400' : 'bg-blue-400'}`}></span>
-                        <span className={`group-hover:${themeStyles.accentText}`}>{item.keyword}</span>
-                      </button>
+                        <span className={`group-hover:${themeStyles.accentText} mr-1`}>{item.keyword}</span>
+                        
+                        {/* ✨ [X] 삭제 버튼 추가 */}
+                        <button
+                          onClick={(e) => deleteHistoryItem(e, item.id)}
+                          className="p-1 rounded-full hover:bg-red-100 text-slate-300 hover:text-red-500 transition-colors"
+                          title="삭제"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -1233,7 +1399,9 @@ const handleGenerate = async () => {
                         prose-p:text-slate-600 prose-p:leading-8 
                         prose-strong:font-bold
                         prose-li:text-slate-600 ${isTestMode ? 'prose-h2:text-orange-600 prose-strong:text-orange-500 prose-li:marker:text-orange-300' : 'prose-h2:text-blue-600 prose-strong:text-blue-500 prose-li:marker:text-blue-300'}`}>
-                        <ReactMarkdown>{result}</ReactMarkdown>
+                        <ReactMarkdown>
+                          {result.replace(/\\#/g, '#')}
+                        </ReactMarkdown>
                       </div>
                     )}
                     

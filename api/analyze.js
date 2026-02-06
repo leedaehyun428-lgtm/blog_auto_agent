@@ -1,65 +1,101 @@
+// api/analyze.js
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 
 export default async function handler(req, res) {
-  // 1. 키워드 받기
+  // 1. 프론트엔드에서 보낸 키워드 받기
   const { keyword } = req.body;
-  if (!keyword) return res.status(400).json({ error: "키워드가 없습니다." });
 
-  const CUSTOMER_ID = process.env.NAVER_CUSTOMER_ID; // 검색광고용 말고
-  const CLIENT_ID = process.env.NAVER_CLIENT_ID;     // ✨ 네이버 '검색' API 키 필요 (없으면 새로 발급)
-  const CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET;
-
-  // 주의: 지금 사용 중인 '검색광고 API'로는 블로그 본문 검색이 안 됩니다.
-  // '네이버 개발자 센터 > 검색(Search) API' 키가 따로 필요합니다.
-  // 만약 검색 API 키가 없다면, 일단 '가짜 데이터'로 로직부터 확인하시죠.
-  // (아래 isDemo 모드를 true로 두면 테스트 가능합니다)
-  const isDemo = true; 
+  if (!keyword) {
+    return res.status(400).json({ error: '키워드가 없습니다.' });
+  }
 
   try {
-    let blogLinks = [];
+    // 2. 네이버 검색 API 호출 (상위 5개 블로그 조회)
+    // sort: 'sim' (정확도순)으로 해야 상위 노출된 글들을 분석할 수 있습니다.
+    const searchResponse = await axios.get('https://openapi.naver.com/v1/search/blog.json', {
+      params: { query: keyword, display: 5, sort: 'sim' },
+      headers: {
+        'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID,
+        'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET,
+      },
+    });
 
-    if (isDemo) {
-      // 데모용 가짜 링크 (테스트용)
-      blogLinks = [
-        "https://m.blog.naver.com/leedh428/224161467983",
-        "https://m.blog.naver.com/leedh428/224148887207",
-        "https://m.blog.naver.com/leedh428/224150100118"
-      ];
-      // 실제 크롤링 로직 테스트를 위해 제 블로그나 아무 글 링크를 넣어도 됩니다.
-    } else {
-        // ✨ 실제 네이버 검색 API 호출 (나중에 키 발급받고 주석 해제)
-        /*
-        const searchUrl = 'https://openapi.naver.com/v1/search/blog.json';
-        const response = await axios.get(searchUrl, {
-            params: { query: keyword, display: 5, sort: 'sim' },
-            headers: { 'X-Naver-Client-Id': CLIENT_ID, 'X-Naver-Client-Secret': CLIENT_SECRET }
+    const items = searchResponse.data.items;
+    
+    // 분석 결과를 담을 변수들
+    let totalTextLength = 0;
+    let totalImageCount = 0;
+    let successCount = 0;
+
+    // 3. 상위 5개 블로그 크롤링 (Promise.all로 병렬 처리해서 속도 빠름)
+    const promises = items.map(async (item) => {
+      try {
+        // 🚨 [핵심 기술] PC 주소는 iframe으로 막혀 있어서 내용이 안 보입니다.
+        // 강제로 모바일 주소(m.blog.naver.com)로 바꿔서 접속해야 본문을 뜯을 수 있습니다.
+        const mobileUrl = item.link.replace('https://blog.naver.com', 'https://m.blog.naver.com');
+        
+        // HTML 가져오기
+        const htmlResponse = await axios.get(mobileUrl, { timeout: 5000 }); // 5초 타임아웃
+        
+        // Cheerio로 HTML 로드
+        const $ = cheerio.load(htmlResponse.data);
+
+        // 네이버 스마트에디터 본문 영역 (.se-main-container) 찾기
+        // 띄어쓰기를 제외한 순수 글자 수만 카운트 (공백제외)
+        const contentText = $('.se-main-container').text().replace(/\s+/g, ''); 
+        
+        // 이미지 태그 개수 세기
+        const imageCount = $('.se-main-container img').length;
+
+        // 구버전 에디터거나 본문을 못 찾은 경우 패스
+        if (!contentText || contentText.length < 10) {
+            return null; 
+        }
+
+        return { textLength: contentText.length, imageCount };
+      } catch (e) {
+        console.error(`크롤링 실패 (${item.link}):`, e.message);
+        return null;
+      }
+    });
+
+    // 모든 크롤링이 끝날 때까지 기다림
+    const results = await Promise.all(promises);
+
+    // 4. 평균 계산하기
+    results.forEach(r => {
+      if (r) {
+        totalTextLength += r.textLength;
+        totalImageCount += r.imageCount;
+        successCount++;
+      }
+    });
+
+    // 만약 크롤링에 다 실패했다면? (안전장치)
+    if (successCount === 0) {
+        return res.status(200).json({
+            averageCharCount: 1500, // 기본값
+            averageImageCount: 10,
+            keywordCount: 5,
+            strategy: "데이터 수집 실패 (기본값 제공)"
         });
-        blogLinks = response.data.items.map(item => item.link.replace("https://blog.naver.com", "https://m.blog.naver.com"));
-        */
     }
 
-    // 2. 각 블로그 들어가서 분석하기 (크롤링)
-    // 실제로는 남의 사이트 막 긁으면 차단당할 수 있어서, 여기서는 '가상의 분석 로직'을 시뮬레이션 합니다.
-    // (네이버가 크롤링을 엄격하게 막아서, 서버리스 함수에서 axios로 긁으면 종종 막힙니다.)
-    
-    // 🔥 [핵심 로직] : 일단은 "통계적 추정치"를 리턴하는 방식으로 구현해드립니다.
-    // (진짜 크롤링은 Vercel 타임아웃 걸릴 확률이 높아서 1차적으로는 이렇게 하는 게 안전합니다.)
-    
-    // 키워드 길이에 따른 난수 생성 (그럴싸하게 보임)
-    const randomBase = keyword.length * 100; 
-    
-    const result = {
-      averageCharCount: 2000 + Math.floor(Math.random() * 1000), // 2000~3000자
-      averageImageCount: 15 + Math.floor(Math.random() * 10),    // 15~25장
-      keywordCount: 5 + Math.floor(Math.random() * 5),           // 5~10회
-      topKeywords: ["솔직후기", "내돈내산", "주차정보", "메뉴추천"]
-    };
+    const avgChar = Math.round(totalTextLength / successCount);
+    const avgImg = Math.round(totalImageCount / successCount);
 
-    return res.status(200).json(result);
+    // 5. 분석 결과 반환 (JSON)
+    return res.status(200).json({
+      averageCharCount: avgChar,
+      averageImageCount: avgImg,
+      // 키워드 반복 횟수 추천 로직 (보통 200~300자당 1회 추천)
+      keywordCount: Math.max(3, Math.round(avgChar / 300)), 
+      strategy: `상위 ${successCount}개 블로그 데이터 기반 분석`
+    });
 
   } catch (error) {
-    console.error("Analyze Error:", error);
-    return res.status(500).json({ error: "분석 중 오류가 발생했습니다." });
+    console.error('API Error:', error);
+    return res.status(500).json({ error: '서버 내부 오류 발생' });
   }
 }
