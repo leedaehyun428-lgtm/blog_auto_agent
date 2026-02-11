@@ -286,9 +286,19 @@ function App() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    alert("로그아웃 되었습니다.");
-  };
+      await supabase.auth.signOut();
+      
+      // ✨ 모든 상태값 초기화
+      setUser(null);
+      setVolts(0);
+      setUserGrade('basic');
+      setMyBlogId('');          // 내 블로그 ID 초기화
+      setMyInfluencerUrl('');   // 인플루언서 URL 초기화
+      setIsAdmin(false);        // 관리자 권한 해제
+      setHistory([]);           // 기록 삭제
+      
+      alert("로그아웃 되었습니다.");
+    };
 
   const saveToHistory = async (newKeyword: string, newContent: string) => {
     if (!user) return;
@@ -433,7 +443,7 @@ function App() {
         setVolts(prev => prev + 10); // UI 복구
         
         alert(`오류가 발생하여 차감된 10 볼트가 자동 환불되었습니다.\n\n사유: ${error.message}`);
-        
+
         const detailedError = error.response?.data?.error?.message || error.message || "서버 응답 없음";
         
         // ❌ 실패 로그 저장
@@ -649,7 +659,6 @@ function App() {
       <div className={`max-w-4xl w-full bg-white/70 backdrop-blur-xl rounded-[2.5rem] shadow-2xl border ${themeStyles.containerBorder} min-h-[650px] flex flex-col overflow-hidden relative transition-all duration-500`}>
         
         {/* Header */}
-        {/* Header */}
         <div className="px-8 py-6 flex items-center justify-between z-20">
           <div className="flex items-center gap-2 cursor-pointer group" onClick={resetToHome}>
             <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-lg group-hover:scale-105 transition-transform ${themeStyles.button}`}>
@@ -766,12 +775,29 @@ function App() {
             ) : (
               // 비로그인 상태 (그대로 유지)
               <div className="flex items-center gap-2">
-                <button onClick={handleLogin} className="text-xs font-bold text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg transition-colors">구글 로그인</button>
-                <button onClick={handleKakaoLogin} className="text-xs font-bold bg-[#FEE500] text-slate-900 px-3 py-1.5 rounded-lg hover:opacity-90 transition-colors">카카오</button>
-              </div>
+              {/* 구글 로그인 */}
+              <button 
+                onClick={handleLogin}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200 shadow-sm hover:bg-slate-50 transition-all text-xs font-bold text-slate-600"
+              >
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-4 h-4" alt="G" />
+                구글 로그인
+              </button>
+              
+              {/* 카카오 로그인 */}
+              <button 
+                onClick={handleKakaoLogin}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#FEE500] hover:bg-[#FDD835] transition-all text-xs font-bold text-slate-900"
+              >
+                <img src="https://upload.wikimedia.org/wikipedia/commons/e/e3/KakaoTalk_logo.svg" className="w-3.5 h-3.5" alt="K" />
+                카카오 로그인
+              </button>
+            </div>
             )}
           </div>
-            {/* 햄버거 메뉴 버튼 (모바일/PC 공통) */}
+          
+          {/* 햄버거 버튼 영역 */}
+            {user && (
             <div className="relative" ref={menuRef}>
               <button 
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -779,6 +805,11 @@ function App() {
               >
                 {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>
+            </div>
+          )}
+
+          {/* 메뉴 기능 */}
+            <div className="relative" ref={menuRef}>
 
               {/* ✨ 드롭다운 메뉴 (반드시 relative div 안에 있어야 함) */}
               <AnimatePresence>
