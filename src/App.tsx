@@ -4,15 +4,15 @@ import {
   Sparkles, Search, Copy, Clock, Trash2, CheckCircle, RotateCcw, Menu, X, 
   Utensils, Plane, Shirt, Landmark, Smile, AlignLeft, Smartphone, Monitor, 
   Download, Image as ImageIcon, PenLine, Save, XCircle, UploadCloud, DownloadCloud, 
-  Package, MessageSquarePlus, BarChart3 // BarChart3 아이콘 추가
+  Package, MessageSquarePlus, BarChart3, UserCog, LogOut
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
-import { searchInfo, generateBlogPost, analyzeKeyword, type ThemeType } from './api'; // ✨ analyzeKeyword 추가
-import { supabase } from './supabaseClient'; //DB 연동 추가
-import AdminPage from './AdminPage'; // 파일 import
-import { UserCog } from 'lucide-react'; // 아이콘 import
+import { searchInfo, generateBlogPost, analyzeKeyword, type ThemeType } from './api';
+import { supabase } from './supabaseClient';
+import AdminPage from './AdminPage';
 
+// --- [상수 및 타입 정의] ---
 const MY_BLOG_ID = 'leedh428';
 const MY_INFLUENCER_URL = 'https://in.naver.com/simsimpuri';
 
@@ -41,6 +41,8 @@ const DEFAULT_PROMPTS = [
 ];
 
 function App() {
+  // --- [상태 관리: State] ---
+  const [user, setUser] = useState<any>(null);
   const [keyword, setKeyword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState('');
@@ -50,7 +52,6 @@ function App() {
   
   const [isTestMode, setIsTestMode] = useState(true); 
   const [resultIsTestMode, setResultIsTestMode] = useState(true);
-  
   const [isMobileView, setIsMobileView] = useState(false);
 
   // 편집 모드 상태
@@ -61,35 +62,52 @@ function App() {
   const [useGuide, setUseGuide] = useState(false);
   const [guide, setGuide] = useState('');
 
-  // ✨ [신규] 키워드 분석 상태
+  // 키워드 분석 상태
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisData, setAnalysisData] = useState<{
     main: { keyword: string; totalSearch: number; totalClick: string; compIdx: string };
     recommendations: { keyword: string; totalSearch: number; totalClick: string; compIdx: string }[];
   } | null>(null);
 
+  // Refs
   const thumbnailRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 히스토리 및 기타 상태
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [copyStatus, setCopyStatus] = useState('idle');
 
   const [exposureGuide, setExposureGuide] = useState<{
-  charCount: number;
-  imgCount: number;
-  keywordCount: number;
-} | null>(null);
+    charCount: number;
+    imgCount: number;
+    keywordCount: number;
+  } | null>(null);
 
+  // 관리자 및 결제(볼트) 상태
   const [showAdmin, setShowAdmin] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false); // 내가 관리자인지 여부
-  
-  // 260206_말투 불러오기, 저장하기 추가 함수
-  const [prompts, setPrompts] = useState<any[]>([]); // 저장된 말투 목록
-  const [selectedPromptId, setSelectedPromptId] = useState(''); // 선택된 말투 ID
-  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false); // 말투 저장 모달
-  const [newPromptTitle, setNewPromptTitle] = useState(''); // 새 말투 제목
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [volts, setVolts] = useState(0); // ✨ [핵심] 볼트 잔액
+  const [userGrade, setUserGrade] = useState('basic');
 
+  // 말투(Persona) 관련 상태
+  const [prompts, setPrompts] = useState<any[]>([]);
+  const [selectedPromptId, setSelectedPromptId] = useState('');
+  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
+  const [newPromptTitle, setNewPromptTitle] = useState('');
+
+  // 내 블로그 설정 상태
+  const [myBlogId, setMyBlogId] = useState('');
+  const [myInfluencerUrl, setMyInfluencerUrl] = useState('');
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false); // 설정창 열기/닫기
+
+  //[신규] 모달 안에서만 쓸 '임시 수정용' 변수
+  const [editBlogId, setEditBlogId] = useState('');
+  const [editInfluencerUrl, setEditInfluencerUrl] = useState('');
+
+
+
+  // 테마 스타일 정의
   const themeStyles = isTestMode ? {
     bg: "from-orange-50 via-amber-50 to-yellow-50",
     containerBorder: "border-orange-100",
@@ -116,21 +134,7 @@ function App() {
     selection: "selection:bg-blue-200"
   };
 
-  /* localStorage 브라우저 캐시 사용하는 저장소 (DB로 변경)
-  useEffect(() => {
-    const savedHistory = localStorage.getItem('blog_full_history');
-    if (savedHistory) setHistory(JSON.parse(savedHistory));
-    
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);*/
-
-  // 메뉴 바깥 클릭 시 닫기 기능
+  // 메뉴 닫기 이벤트 핸들러
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -141,111 +145,139 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-// 관리자 체크 로직 (수정됨)
-  const checkAdmin = async (id: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('grade')
-      .eq('id', id)
-      .single();
+  // --------------- [데이터 가져오기 함수들 (Data Fetching)] ---------------
 
+  // 1. 관리자 여부 체크
+  const checkAdmin = async (id: string) => {
+    const { data } = await supabase.from('profiles').select('grade').eq('id', id).single();
     if (data && data.grade === 'admin') {
       setIsAdmin(true);
     } else {
       setIsAdmin(false);
-      setShowAdmin(false); // ✨ [추가] 관리자 아니면 관리자 창도 강제로 닫기!
+      setShowAdmin(false);
     }
   };
 
-// Supabase DB 연동 및 로그인 상태 감지
-  useEffect(() => {
-    // 1. 페이지 로드 시 세션 확인
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchHistory(session.user.id);
-        checkAdmin(session.user.id);
-        fetchPrompts();
+  // 2. 히스토리 가져오기
+  const fetchHistory = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('posts')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (data) {
+      const formatted: HistoryItem[] = data.map((item: any) => ({
+        id: item.id,
+        keyword: item.keyword,
+        content: item.content,
+        date: new Date(item.created_at).toLocaleDateString(),
+        theme: item.theme as ThemeType,
+        isTestMode: item.is_test_mode
+      }));
+      setHistory(formatted);
+    }
+  };
+
+  // 3. 내 말투 목록 가져오기
+  const fetchPrompts = async (userId: string) => {
+    const { data } = await supabase
+      .from('user_prompts')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (data) setPrompts(data);
+  };
+
+  // ✨ [수정됨] 내 볼트와 등급(Grade) 함께 가져오기
+  const fetchUserData = async (userId: string) => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('volts, grade, blog_id, influencer_url') // 👈 여기 추가
+        .eq('id', userId)
+        .single();
+      
+      if (data) {
+        setVolts(data.volts);
+        setUserGrade(data.grade || 'basic');
+        setMyBlogId(data.blog_id || '');             // 👈 저장
+        setMyInfluencerUrl(data.influencer_url || ''); // 👈 저장
       }
-    });
+    };
 
-    // 2. 로그인/로그아웃 상태 변화 감지 (실시간)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchHistory(session.user.id);
-        checkAdmin(session.user.id);
-      } else {
-      setHistory([]);
-      setPrompts([]); // ✨ [추가] 로그아웃 시 말투 목록 비우기
-      setIsAdmin(false);
-      }
-    });
+    // ✨ 저장 버튼 눌렀을 때만 DB & 화면 업데이트
+      const handleUpdateProfile = async () => {
+        if (!user) return;
+        
+        const { error } = await supabase
+          .from('profiles')
+          .update({ 
+            blog_id: editBlogId,           // 임시 변수 값으로 DB 저장
+            influencer_url: editInfluencerUrl 
+          })
+          .eq('id', user.id);
 
-    return () => subscription.unsubscribe();
-  }, []);
-
-    // Supabase DB에서 데이터 긁어오는 함수
-      const fetchHistory = async (userId: string) => {
-        const { data, error } = await supabase
-          .from('posts')
-          .select('*')
-          .order('created_at', { ascending: false }) // 최신순 정렬
-          .limit(10); // 10개만
-
-        if (error) console.error('Error fetching history:', error);
-        else if (data) {
-          // DB 컬럼명과 앱 내 타입이 약간 다를 수 있으니 매핑
-          const formatted: HistoryItem[] = data.map((item: any) => ({
-            id: item.id,
-            keyword: item.keyword,
-            content: item.content,
-            date: new Date(item.created_at).toLocaleDateString(),
-            theme: item.theme as ThemeType,
-            isTestMode: item.is_test_mode
-          }));
-          setHistory(formatted);
+        if (error) {
+          alert("저장에 실패하였습니다.");
+        } else {
+          alert("내 정보가 저장되었습니다! 🎉");
+          setMyBlogId(editBlogId);             // 성공하면 진짜 변수에 반영
+          setMyInfluencerUrl(editInfluencerUrl);
+          setIsProfileModalOpen(false);        // 창 닫기
         }
       };
+  
+    // --------------- [초기화 및 인증 로직 (Auth & Init)] ---------------
+        useEffect(() => {
+          const initializeUser = async (sessionUser: any) => {
+            setUser(sessionUser ?? null);
+            if (sessionUser) {
+              // 1. ✨ 로그인 시 내 이메일/이름을 DB에 최신화 (명찰 달기)
+              await supabase.from('profiles').update({
+                  email: sessionUser.email,
+                  user_name: sessionUser.user_metadata.full_name || sessionUser.email?.split('@')[0]
+              }).eq('id', sessionUser.id);
 
+              // 2. 데이터 로드
+              fetchHistory(sessionUser.id);
+              checkAdmin(sessionUser.id);
+              fetchPrompts(sessionUser.id);
+              
+              // ✨ [여기가 수정됨] fetchVolts 대신 fetchUserData 호출!
+              fetchUserData(sessionUser.id); 
+            } else {
+              // 로그아웃 시 초기화
+              setHistory([]);
+              setPrompts([]);
+              setIsAdmin(false);
+              setVolts(0);
+              setUserGrade('basic'); // 등급도 초기화
+            }
+          };
 
-  // 260129_Supabase cheak
-  useEffect(() => {
-    console.log("Checking Supabase connection...");
-    console.log("Supabase Client:", supabase);
-  }, []);
-
-  // ✨ 260129_사용자 로그인 상태
-  const [user, setUser] = useState<any>(null);
-
-  // ✨ [신규] 초기 실행 시 로그인 상태 확인
-  useEffect(() => {
-    // 1. 이미 로그인된 상태인지 확인
+    // 1. 세션 확인
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+      initializeUser(session?.user);
     });
 
-    // 2. 로그인/로그아웃 상태 변화 감지 (실시간)
+    // 2. 로그인/로그아웃 감지
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      initializeUser(session?.user);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // ✨ [신규] 구글 로그인 핸들러
-const handleLogin = async () => {
+
+  // --------------- [핸들러 함수들 (Handlers)] ---------------
+
+  const handleLogin = async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        // 핵심: 현재 브라우저의 주소(Origin)로 돌아오라고 명시
-        // 로컬에서는 localhost로, 배포환경에서는 vercel.app으로 자동 설정됨
-        redirectTo: window.location.origin 
-      }
+      options: { redirectTo: window.location.origin }
     });
   };
 
-  // ✨ 카카오 로그인 핸들러
   const handleKakaoLogin = async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'kakao',
@@ -253,110 +285,239 @@ const handleLogin = async () => {
     });
   };
 
-  // ✨ [신규] 로그아웃 핸들러
   const handleLogout = async () => {
     await supabase.auth.signOut();
     alert("로그아웃 되었습니다.");
   };
 
-  /* local 사용 저장 로직 (DB 연동 후 미사용)
-  const saveToHistory = (newKeyword: string, newContent: string) => {
-    const newItem: HistoryItem = {
-      id: Date.now(),
+  const saveToHistory = async (newKeyword: string, newContent: string) => {
+    if (!user) return;
+    const { error } = await supabase.from('posts').insert({
+      user_id: user.id,
       keyword: newKeyword,
       content: newContent,
-      date: new Date().toLocaleDateString(),
       theme: selectedTheme,
-      isTestMode: isTestMode
-    };
-    const updatedHistory = [newItem, ...history.filter(h => h.keyword !== newKeyword)].slice(0, 10);
-    setHistory(updatedHistory);
-    localStorage.setItem('blog_full_history', JSON.stringify(updatedHistory));
-  };
-  */
-
-  // Supabase DB에 저장하는 함수
-  const saveToHistory = async (newKeyword: string, newContent: string) => {
-    // 1. 로그인 안 했으면 저장 안 함 (또는 로컬에만 하거나)
-    if (!user) return;
-
-    // Supabase DB insert
-    const { error } = await supabase
-      .from('posts')
-      .insert({
-        user_id: user.id,
-        keyword: newKeyword,
-        content: newContent,
-        theme: selectedTheme,
-        is_test_mode: isTestMode
-      });
-
+      is_test_mode: isTestMode
+    });
     if (error) {
-      console.error('저장 실패:', error);
       alert("저장에 실패했습니다.");
     } else {
-      // 3. 저장 성공하면 목록 다시 불러오기
       fetchHistory(user.id);
     }
   };
 
-  /* local 사용 삭제 로직 (DB 연동 후 미사용)
-  const clearHistory = () => {
-    if(confirm('모든 기록을 삭제하시겠습니까?')) {
-      setHistory([]);
-      localStorage.removeItem('blog_full_history');
-    }
-  };
-  */
-
-  // Supabase DB에 삭제하는 함수
   const clearHistory = async () => {
     if (!user) return;
     if (confirm('서버에 저장된 모든 기록을 삭제하시겠습니까?')) {
-      const { error } = await supabase
-        .from('posts')
-        .delete()
-        .eq('user_id', user.id); // 내 아이디로 된 글만 삭제
-
-      if (error) {
-        alert("삭제 중 오류가 발생했습니다.");
-      } else {
-        setHistory([]);
-      }
+      const { error } = await supabase.from('posts').delete().eq('user_id', user.id);
+      if (error) alert("삭제 중 오류가 발생했습니다.");
+      else setHistory([]);
     }
   };
 
-  const exportHistory = () => {
-    const jsonString = `data:text/json;chatset=utf-8,${encodeURIComponent(
-      JSON.stringify(history)
-    )}`;
-    const link = document.createElement("a");
-    link.href = jsonString;
-    link.download = `blog_master_backup_${new Date().toLocaleDateString()}.json`;
-    link.click();
+  const deleteHistoryItem = async (e: React.MouseEvent, itemId: number) => {
+    e.stopPropagation();
+    if (!confirm("이 기록을 삭제하시겠습니까?")) return;
+    const { error } = await supabase.from('posts').delete().eq('id', itemId);
+    if (error) alert("삭제 실패");
+    else if(user) fetchHistory(user.id);
   };
 
-  const importHistory = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const fileReader = new FileReader();
-    if (event.target.files && event.target.files.length > 0) {
-      fileReader.readAsText(event.target.files[0], "UTF-8");
-      fileReader.onload = (e) => {
-        if (e.target?.result) {
-          try {
-            const parsedData = JSON.parse(e.target.result as string);
-            if (Array.isArray(parsedData)) {
-              setHistory(parsedData);
-              // localStorage.setItem('blog_full_history', JSON.stringify(parsedData));
-              // 추후 기능 개발 필요
-              alert("화면에는 복원되었지만, DB에는 저장되지 않았습니다.");
-            } else {
-              alert("올바른 백업 파일이 아닙니다.");
-            }
-          } catch (error) {
-            alert("파일을 읽는 중 오류가 발생했습니다.");
-          }
-        }
-      };
+  const handleAnalyze = async () => {
+    if (!user) {
+      if (confirm("로그인이 필요한 서비스입니다.\n로그인하고 무료로 분석해볼까요?")) handleLogin();
+      return;
+    }
+    if (!keyword.trim()) return alert("키워드를 입력해주세요!");
+
+    setIsAnalyzing(true);
+    setAnalysisData(null);
+    setExposureGuide(null);
+
+    try {
+      // 1. 키워드 분석 (네이버 광고 API 등)
+      const keywordData = await analyzeKeyword(keyword);
+      setAnalysisData(keywordData);
+
+      // 2. 상위 노출 분석 (우리 백엔드 API)
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword })
+      });
+      const guideData = await response.json();
+      
+      setExposureGuide({
+        charCount: guideData.averageCharCount,
+        imgCount: guideData.averageImageCount,
+        keywordCount: guideData.keywordCount
+      });
+    } catch (error) {
+      alert("분석에 실패했습니다.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const openProfileModal = () => {
+  setEditBlogId(myBlogId);             // 기존 값 -> 임시 변수로 복사
+  setEditInfluencerUrl(myInfluencerUrl); 
+  setIsProfileModalOpen(true);         // 모달 열기
+  };
+
+  // ⚡ [최종 수정] 결제 + 생성 + 자동환불 로직 통합
+  const handleGenerate = async () => {
+    // 1. 비로그인 차단
+    if (!user) {
+      if (confirm("로그인이 필요한 서비스입니다.\n로그인하고 서비스를 이용해볼까요?"))
+        handleLogin();
+      return;
+    }
+
+    // 2. 입력값 체크
+    if (!keyword.trim()) return alert("키워드를 입력해주세요!");
+
+    // 3. 결제 동의 (추후 '다시 보지 않기' 추가 가능)
+    if (!confirm(`⚡ 10 볼트가 차감됩니다.\n(현재 잔액: ${volts} V)\n\n진행하시겠습니까?`)) return;
+
+    setIsLoading(true);
+    setResult('');
+    setCopyStatus('idle');
+
+    try {
+      // 4. 💸 [결제 시도] Supabase 보안 함수 호출 (RPC)
+      const { data: isSuccess, error: payError } = await supabase
+        .rpc('deduct_volts', { row_id: user.id, amount: 10 });
+
+      // 잔액 부족 or 에러 시 중단
+      if (payError || !isSuccess) {
+        throw new Error("볼트가 부족하거나 결제 중 오류가 발생했습니다. 충전이 필요할 수 있습니다.");
+      }
+
+      // UI 즉시 반영 (낙관적 업데이트)
+      setVolts(prev => prev - 10);
+
+      // 5. 글 생성 시작
+      setStep('searching');
+      const searchData = await searchInfo(keyword, isTestMode, selectedTheme);
+      
+      setStep('writing');
+      const blogPost = await generateBlogPost(
+        keyword, 
+        searchData, 
+        selectedTheme, 
+        useGuide ? guide : undefined
+      );
+      
+      // 6. 성공 처리
+      setResult(blogPost);
+      setResultIsTestMode(isTestMode);
+      setStep('done');
+      saveToHistory(keyword, blogPost);
+
+      // ✅ 성공 로그 저장
+      await supabase.from('generation_logs').insert({
+        user_id: user.id,
+        keyword: keyword,
+        theme: selectedTheme,
+        used_volts: 10,
+        status: 'success'
+      });
+
+    } catch (error: any) {
+      console.error(error);
+      
+      // 7. 🚑 [자동 환불] 에러 발생 시 볼트 복구
+      if (error.message !== "볼트가 부족하거나 결제 중 오류가 발생했습니다. 충전이 필요할 수 있습니다.") {
+        await supabase.rpc('refund_volts', { row_id: user.id, amount: 10 });
+        setVolts(prev => prev + 10); // UI 복구
+        
+        alert(`오류가 발생하여 차감된 10 볼트가 자동 환불되었습니다.\n\n사유: ${error.message}`);
+        
+        const detailedError = error.response?.data?.error?.message || error.message || "서버 응답 없음";
+        
+        // ❌ 실패 로그 저장
+        await supabase.from('generation_logs').insert({
+            user_id: user.id,
+            keyword: keyword,
+            status: 'refunded',
+            error_message: detailedError // ✨ 단순 문구 대신 '진짜 에러 내용' 저장
+          });
+          
+          alert(`오류 발생: ${detailedError}`); // 사용자에게도 구체적으로 알림
+      } else {
+        alert(error.message); // 잔액 부족 메시지
+      }
+
+      setStep('idle');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 말투 저장
+  const handleSavePrompt = async () => {
+    if (!user) return alert("로그인이 필요합니다.");
+    if (!guide.trim()) return alert("저장할 내용이 없습니다.");
+    if (!newPromptTitle.trim()) return alert("말투의 별명을 입력해주세요.");
+
+    const { error } = await supabase.from('user_prompts').insert({
+      user_id: user.id,
+      title: newPromptTitle,
+      system_prompt: guide,
+    });
+
+    if (error) {
+      alert("저장 실패 ㅠㅠ");
+    } else {
+      alert("저장되었습니다!");
+      setNewPromptTitle('');
+      setIsPromptModalOpen(false);
+      fetchPrompts(user.id);
+    }
+  };
+
+  // 말투 선택 (프리셋 + 내 말투)
+  const handleSelectPrompt = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const promptId = e.target.value;
+    setSelectedPromptId(promptId);
+    
+    if (promptId === '') {
+      setGuide('');
+      return;
+    }
+
+    let selected = prompts.find(p => p.id === promptId);
+    if (!selected) selected = DEFAULT_PROMPTS.find(p => p.id === promptId);
+
+    if (selected) {
+      setGuide(selected.system_prompt);
+      setUseGuide(true);
+    }
+  };
+
+  // 말투 삭제
+  const handleDeletePrompt = async () => {
+    if (!selectedPromptId) return alert("삭제할 말투를 선택해주세요.");
+    
+    if (DEFAULT_PROMPTS.find(p => p.id === selectedPromptId)) {
+      return alert("기본 프리셋은 삭제할 수 없습니다.");
+    }
+
+    if (!confirm("정말 이 말투를 삭제하시겠습니까?")) return;
+
+    const { error } = await supabase
+      .from('user_prompts')
+      .delete()
+      .eq('id', selectedPromptId);
+
+    if (error) {
+      alert("삭제 실패");
+    } else {
+      alert("삭제되었습니다.");
+      setSelectedPromptId('');
+      setGuide('');
+      if(user) fetchPrompts(user.id);
     }
   };
 
@@ -374,257 +535,12 @@ const handleLogin = async () => {
     setStep('idle');
     setKeyword('');
     setResult('');
-    setAnalysisData(null); // 분석 데이터 초기화
+    setAnalysisData(null);
     setIsMobileView(false);
     setIsEditing(false);
-
-    //가이드 입력창 초기화 로직
-    setGuide('');       // 1. 입력된 텍스트 싹 지우기
-    setUseGuide(false); // 2. (선택사항) 아코디언 메뉴도 다시 접어두기
-  };
-
-// ✨ [신규] 키워드 분석 핸들러
-  const handleAnalyze = async () => {
-    // 🔒 [문지기] 로그인 안 했으면 여기서 멈춤!
-    if (!user) {
-      if (confirm("로그인이 필요한 서비스입니다.\n로그인하고 무료로 분석해볼까요?")) {
-        handleLogin();
-      }
-      return; // 👈 핵심: 여기서 함수를 강제로 끝내버림 (아래 코드 실행 X)
-    }
-
-    if (!keyword.trim()) {
-      alert("키워드를 입력해주세요!");
-      return;
-    }
-
-    setIsAnalyzing(true);
-    setAnalysisData(null); // 기존 결과 초기화
-    setExposureGuide(null); // 초기화
-
-    try {
-      // 1. 기존 키워드 분석 (네이버 광고 API)
-      const keywordData = await analyzeKeyword(keyword);
-      setAnalysisData(keywordData);
-
-      // 2. ✨ [신규] 상위 노출 전략 분석 (우리가 만든 API)
-      const response = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword })
-      });
-      const guideData = await response.json();
-      
-      setExposureGuide({
-        charCount: guideData.averageCharCount,
-        imgCount: guideData.averageImageCount,
-        keywordCount: guideData.keywordCount
-      });
-
-    } catch (error) {
-      alert("분석에 실패했습니다.");
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-// 📊 사용량 체크 및 카운트 증가 함수 (수정됨: 장부 없으면 자동 생성)
-  const checkAndIncrementUsage = async (userId: string): Promise<boolean> => {
-    // 한국시간대로 리셋 시간 변경 (00시 초기화)
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
-    // 1. 내 정보(Profile) 가져오기
-    let { data: profile, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    // 🚨 [수정] 프로필이 없으면(기존 유저) 즉시 생성 시도
-    if (!profile) {
-      console.log("프로필 없음. 신규 생성 시도...");
-      const { data: newProfile, error: createError } = await supabase
-        .from('profiles')
-        .insert({ id: userId, daily_count: 0, max_daily_count: 2 })
-        .select()
-        .single();
-      
-      if (createError) {
-        console.error("프로필 생성 실패:", createError);
-        alert("일시적인 오류입니다. 잠시 후 다시 시도해주세요.");
-        return false;
-      }
-      profile = newProfile; // 방금 만든 프로필로 교체
-    }
-
-    if (error && !profile) {
-      console.error("프로필 조회 실패:", error);
-      return false;
-    }
-
-    // 2. 날짜가 지났으면 초기화
-    if (profile.last_used_date !== today) {
-      const { error: resetError } = await supabase
-        .from('profiles')
-        .update({ daily_count: 0, last_used_date: today })
-        .eq('id', userId);
-      
-      if (resetError) console.error("날짜 리셋 실패", resetError);
-      profile.daily_count = 0; 
-    }
-
-    // 3. 한도 체크
-    if (profile.daily_count >= profile.max_daily_count) {
-      alert(`오늘 무료 사용량(${profile.max_daily_count}회)을 모두 쓰셨네요! 😭\n내일 다시 이용해주세요!`);
-      return false; 
-    }
-
-    // 4. 사용량 1 증가
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({ daily_count: profile.daily_count + 1 })
-      .eq('id', userId);
-
-    if (updateError) {
-      console.error("카운트 증가 실패", updateError);
-      return false;
-    }
-
-    return true; 
-  };
-
-
-  // 260206_1. 내 말투 목록 불러오기
-    const fetchPrompts = async () => {
-      const { data, error } = await supabase
-        .from('user_prompts')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (data) setPrompts(data);
-    };
-
-  // 2. 현재 입력된 가이드 저장하기
-  const handleSavePrompt = async () => {
-    if (!user) return alert("로그인이 필요합니다.");
-    if (!guide.trim()) return alert("저장할 내용이 없습니다.");
-    if (!newPromptTitle.trim()) return alert("말투의 별명을 입력해주세요 (예: 맛집용)");
-
-    const { error } = await supabase.from('user_prompts').insert({
-      user_id: user.id,
-      title: newPromptTitle,
-      system_prompt: guide,
-    });
-
-    if (error) {
-      alert("저장 실패 ㅠㅠ");
-    } else {
-      alert("저장되었습니다!");
-      setNewPromptTitle('');
-      setIsPromptModalOpen(false);
-      fetchPrompts(); // 목록 갱신
-    }
-  };
-
-  // 🗑️ 1. 선택된 말투 삭제하기
-  const handleDeletePrompt = async () => {
-    if (!selectedPromptId) return alert("삭제할 말투를 선택해주세요.");
-    if (!confirm("정말 이 말투를 삭제하시겠습니까?")) return;
-
-    const { error } = await supabase
-      .from('user_prompts')
-      .delete()
-      .eq('id', selectedPromptId);
-
-    if (error) {
-      alert("삭제 실패");
-    } else {
-      alert("삭제되었습니다.");
-      setSelectedPromptId(''); // 선택 초기화
-      setGuide(''); // 입력창 비우기
-    }
-  };
-
-  // 🗑️ 2. 히스토리 개별 삭제하기
-  const deleteHistoryItem = async (e: React.MouseEvent, itemId: number) => {
-    e.stopPropagation(); // 🚨 중요: 부모 버튼 클릭(불러오기) 방지!
-    
-    if (!confirm("이 기록을 삭제하시겠습니까?")) return;
-
-    const { error } = await supabase
-      .from('posts')
-      .delete()
-      .eq('id', itemId);
-
-    if (error) {
-      alert("삭제 실패");
-    } else {
-      if(user) fetchHistory(user.id); // 목록 갱신
-    }
-  };
-
-  // 3. 말투 선택 시 인풋창에 반영
-  const handleSelectPrompt = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const promptId = e.target.value;
-    setSelectedPromptId(promptId);
-    
-    if (promptId === '') {
-      setGuide(''); // 선택 해제 시 비움
-      return;
-    }
-
-    const selected = prompts.find(p => p.id === promptId);
-    if (selected) {
-      setGuide(selected.system_prompt);
-      setUseGuide(true); // 가이드 창 자동으로 열어주기
-    }
-  };
-
-
-const handleGenerate = async () => {
-      // 1. 비로그인 차단
-      if (!user) {
-          if (confirm("로그인이 필요한 서비스입니다.\n로그인하고 고퀄리티 글을 생성해볼까요? ✨")) {
-            handleLogin(); // 👈 아까 이게 빠져 있었습니다!
-          }
-          return;
-      }
-
-      // 2. 사용량 체크 (여기서 false 나오면 중단)
-      const isAllowed = await checkAndIncrementUsage(user.id);
-      if (!isAllowed) return; 
-    
-      if (!keyword.trim()) {
-        alert("키워드를 입력해주세요!");
-        return;
-      }
-
-      setIsLoading(true);
-      setResult('');
-      setCopyStatus('idle');
-      
-      try {
-        setStep('searching');
-        const searchData = await searchInfo(keyword, isTestMode, selectedTheme);
-        
-        setStep('writing');
-        const blogPost = await generateBlogPost(
-          keyword, 
-          searchData, 
-          selectedTheme, 
-          useGuide ? guide : undefined
-        );
-        
-        setResult(blogPost);
-        setResultIsTestMode(isTestMode);
-        setStep('done');
-        saveToHistory(keyword, blogPost);
-      } catch (error) {
-        console.error(error);
-        alert("오류가 발생했어요. 다시 시도해주세요!");
-        setStep('idle');
-      } finally {
-        setIsLoading(false);
-      }
+    setGuide('');
+    setUseGuide(false);
+    setSelectedPromptId('');
   };
 
   const handleDownloadFile = () => {
@@ -640,19 +556,12 @@ const handleGenerate = async () => {
   const handleDownloadThumbnail = async () => {
     if (!thumbnailRef.current) return;
     try {
-      const canvas = await html2canvas(thumbnailRef.current, {
-        scale: 2,
-        backgroundColor: null,
-        logging: false,
-      });
+      const canvas = await html2canvas(thumbnailRef.current, { scale: 2, backgroundColor: null, logging: false });
       const link = document.createElement('a');
       link.download = `${keyword}_썸네일.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
-    } catch (err) {
-      console.error("썸네일 생성 실패:", err);
-      alert("이미지 생성에 실패했어요.");
-    }
+    } catch (err) { alert("이미지 생성 실패"); }
   };
 
   const handleCopyCleanText = async () => {
@@ -674,24 +583,37 @@ const handleGenerate = async () => {
       await navigator.clipboard.writeText(cleanText);
       setCopyStatus('copied');
       setTimeout(() => setCopyStatus('idle'), 2000);
-    } catch (err) {
-      console.error('복사 실패:', err);
-      alert('복사에 실패했습니다.');
+    } catch (err) { alert('복사 실패'); }
+  };
+
+  const startEditing = () => { setEditableResult(result); setIsEditing(true); };
+  const saveEditing = () => { setResult(editableResult); setIsEditing(false); };
+  const cancelEditing = () => { setIsEditing(false); };
+  
+  const exportHistory = () => {
+    const jsonString = `data:text/json;chatset=utf-8,${encodeURIComponent(JSON.stringify(history))}`;
+    const link = document.createElement("a");
+    link.href = jsonString;
+    link.download = `briter_ai_backup_${new Date().toLocaleDateString()}.json`;
+    link.click();
+  };
+  
+  const importHistory = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const fileReader = new FileReader();
+    if (event.target.files && event.target.files.length > 0) {
+        fileReader.readAsText(event.target.files[0], "UTF-8");
+        fileReader.onload = (e) => {
+            if (e.target?.result) {
+                try {
+                    const parsedData = JSON.parse(e.target.result as string);
+                    if (Array.isArray(parsedData)) {
+                        setHistory(parsedData);
+                        alert("복원 완료! (DB 저장은 안 됨)");
+                    }
+                } catch (error) { alert("파일 오류"); }
+            }
+        };
     }
-  };
-
-  const startEditing = () => {
-    setEditableResult(result);
-    setIsEditing(true);
-  };
-
-  const saveEditing = () => {
-    setResult(editableResult);
-    setIsEditing(false);
-  };
-
-  const cancelEditing = () => {
-    setIsEditing(false);
   };
 
   return (
@@ -743,66 +665,112 @@ const handleGenerate = async () => {
 
           <div className="flex items-center gap-4">
             {/* ✨ [PC 전용] 링크 및 로그인 버튼들 (모바일에서는 숨김) */}
-            <div className="hidden md:flex items-center gap-4 bg-white/50 px-4 py-2 rounded-full border border-white/60 shadow-sm">
-               <a href={`https://blog.naver.com/${MY_BLOG_ID}`} target="_blank" rel="noreferrer" className={`text-xs font-semibold text-slate-500 hover:${themeStyles.accentText} transition-colors`}>내 블로그</a>
-               <span className="text-slate-300 text-[10px]">●</span>
-               <a href={MY_INFLUENCER_URL} target="_blank" rel="noreferrer" className={`text-xs font-semibold text-slate-500 hover:${themeStyles.accentText} transition-colors`}>인플루언서</a>
-               <span className="text-slate-300 text-[10px]">●</span>
-               <a href={`https://blog.naver.com/PostWriteForm.naver?blogId=${MY_BLOG_ID}`} target="_blank" rel="noreferrer" className={`text-xs font-bold ${themeStyles.accentText} hover:opacity-80 transition-colors flex items-center gap-1`}>
-                 글쓰기 →
-               </a>
-               
-               {/* 구분선 */}
-               <div className="w-px h-3 bg-slate-300 mx-1"></div>
+            <div className="hidden md:flex items-center gap-3 bg-white/40 px-4 py-2 rounded-2xl border border-white/50 shadow-sm backdrop-blur-sm mr-2">
+  
+            {/* 내 블로그 */}
+            <button 
+              onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/${myBlogId}`, '_blank')}
+              className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${!myBlogId ? 'text-red-400 hover:text-red-500' : 'text-slate-500 hover:text-green-600'}`}
+              title={myBlogId ? '내 블로그 열기' : '블로그 연동 필요'}
+            >
+              <img src="https://blog.naver.com/favicon.ico" className="w-3.5 h-3.5 opacity-70" alt="N" />
+              <span className="hidden lg:inline">{/* 화면 좁으면 글자 숨김 */}
+                {myBlogId ? '블로그' : '연동필요'}
+              </span>
+            </button>
+            
+            <span className="text-slate-300 text-[10px]">|</span>
+  
+            {/* 인플루언서 */}
+            <button 
+              onClick={() => !myInfluencerUrl ? openProfileModal() : window.open(myInfluencerUrl, '_blank')}
+              className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${!myInfluencerUrl ? 'text-red-400 hover:text-red-500' : 'text-slate-500 hover:text-purple-600'}`}
+              title={myInfluencerUrl ? '인플루언서 홈 열기' : '인플루언서 연동 필요'}
+            >
+              <span>👑</span>
+              <span className="hidden lg:inline">
+                {myInfluencerUrl ? '인플루언서' : '연동필요'}
+              </span>
+            </button>
 
-               {/* PC 로그인 버튼 영역 */}
-               {user ? (
-                 <div className="flex items-center gap-3">
-                   <div className="flex items-center gap-2">
-                     {user.user_metadata.avatar_url && (
-                       <img src={user.user_metadata.avatar_url} alt="Profile" className="w-6 h-6 rounded-full border border-slate-200" />
-                     )}
-                     <span className="text-xs font-bold text-slate-700">
-                       {user.user_metadata.full_name || user.email?.split('@')[0]}님
-                     </span>
-                   </div>
-                   <button 
-                     onClick={handleLogout}
-                     className="text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-600 px-2 py-1 rounded-md transition-colors font-bold"
-                   >
-                     로그아웃
-                   </button>
-                 </div>
-               ) : (
-                 <div className="flex items-center gap-2">
-                   {/* 구글 로그인 (PC) */}
-                   <button 
-                     onClick={handleLogin}
-                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 shadow-sm hover:bg-slate-50 transition-all active:scale-95 group`}
-                   >
-                     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
-                       <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                       <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                       <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                       <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                     </svg>
-                     <span className="text-xs font-bold text-slate-600 group-hover:text-slate-800">구글</span>
-                   </button>
-                   
-                   {/* 카카오 로그인 (PC) */}
-                   <button 
-                     onClick={handleKakaoLogin}
-                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FEE500] border border-[#FEE500] shadow-sm hover:bg-[#FDD835] transition-all active:scale-95 group text-slate-900"
-                   >
-                     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                       <path d="M12 3C5.925 3 1 6.925 1 11.772c0 2.91 1.879 5.48 4.788 7.02-.215.79-.785 2.87-0.9 3.32-.14.545.2.535.42.355.285-.235 4.545-3.085 5.17-3.52.505.075 1.025.115 1.522.115 6.075 0 11-3.925 11-8.772C23 6.925 18.075 3 12 3z"/>
-                     </svg>
-                     <span className="text-xs font-bold text-slate-900/90">카카오</span>
-                   </button>
-                 </div>
-               )}
-            </div>
+            <span className="text-slate-300 text-[10px]">|</span>
 
+            {/* 글쓰기 */}
+            <button 
+              onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/PostWriteForm.naver?blogId=${myBlogId}`, '_blank')}
+              className={`flex items-center gap-1.5 text-xs font-bold hover:opacity-80 transition-colors ${themeStyles.accentText}`}
+            >
+              <PenLine className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline">글쓰기</span>
+            </button>
+          </div>
+
+
+          {/* ✨ [PC 전용] 2. 유저 정보 & 설정 그룹 (우측 박스) */}
+          <div className="hidden md:flex items-center gap-3 bg-white/80 px-4 py-2 rounded-2xl border border-white/60 shadow-sm backdrop-blur-md">
+            {user ? (
+              <>
+                {/* 설정 (톱니바퀴) */}
+                <button 
+                  onClick={openProfileModal} 
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-all"
+                  title="내 정보 설정"
+                >
+                  <UserCog className="w-4 h-4" />
+                </button>
+
+                {/* 등급 배지 */}
+                <div className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border tracking-wider ${
+                  userGrade === 'admin' ? 'bg-slate-900 text-white border-slate-700' :
+                  userGrade === 'pro' ? 'bg-blue-100 text-blue-600 border-blue-200' :
+                  'bg-green-100 text-green-600 border-green-200'
+                }`}>
+                  {userGrade === 'admin' ? 'ADMIN' : userGrade === 'pro' ? 'PRO' : 'BASIC'}
+                </div>
+
+                {/* 볼트 잔액 */}
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-yellow-50 text-yellow-700 rounded-md text-xs font-bold border border-yellow-200 cursor-help" title="잔액 충전하기 (준비중)">
+                  <span>⚡</span>
+                  <span>{volts.toLocaleString()}</span>
+                </div>
+
+                {/* ✨ [복구됨] 프로필 사진 & 이름 & 로그아웃 */}
+                <div className="flex items-center gap-2 pl-2 border-l border-slate-200 ml-1">
+                  {/* 프로필 사진 추가 */}
+                  {user.user_metadata.avatar_url ? (
+                    <img 
+                      src={user.user_metadata.avatar_url} 
+                      alt="Profile" 
+                      referrerPolicy="no-referrer" // 깨짐 방지 필수!
+                      className="w-6 h-6 rounded-full border border-slate-200 shadow-sm"
+                    />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 font-bold text-xs">
+                      {user.email?.[0].toUpperCase()}
+                    </div>
+                  )}
+                  
+                  <span className="text-xs font-bold text-slate-700 max-w-[80px] truncate">
+                    {user.user_metadata.full_name || '유저'}님
+                  </span>
+                  
+                  <button 
+                    onClick={handleLogout} 
+                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                    title="로그아웃"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              // 비로그인 상태 (그대로 유지)
+              <div className="flex items-center gap-2">
+                <button onClick={handleLogin} className="text-xs font-bold text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg transition-colors">구글 로그인</button>
+                <button onClick={handleKakaoLogin} className="text-xs font-bold bg-[#FEE500] text-slate-900 px-3 py-1.5 rounded-lg hover:opacity-90 transition-colors">카카오</button>
+              </div>
+            )}
+          </div>
             {/* 햄버거 메뉴 버튼 (모바일/PC 공통) */}
             <div className="relative" ref={menuRef}>
               <button 
@@ -832,13 +800,19 @@ const handleGenerate = async () => {
                     </button>
                   )}
 
-                    {/* [모바일 전용] 프로필 및 로그인 영역 */}
+                  {/* [모바일 전용] 프로필 및 로그인 영역 */}
                     <div className="md:hidden px-5 py-4 bg-slate-50/80 border-b border-slate-100">
                       {user ? (
                         <div className="flex flex-col gap-3">
+                          {/* 1. 프로필 사진 & 이름 */}
                           <div className="flex items-center gap-3">
                             {user.user_metadata.avatar_url ? (
-                              <img src={user.user_metadata.avatar_url} alt="Profile" className="w-10 h-10 rounded-full border border-white shadow-sm" />
+                              <img 
+                                src={user.user_metadata.avatar_url} 
+                                alt="Profile" 
+                                referrerPolicy="no-referrer" // ✨ 모바일에서도 이미지 깨짐 방지
+                                className="w-10 h-10 rounded-full border border-white shadow-sm" 
+                              />
                             ) : (
                               <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 font-bold text-lg">
                                 {user.email?.[0].toUpperCase()}
@@ -851,6 +825,26 @@ const handleGenerate = async () => {
                               <span className="text-[10px] text-slate-400">{user.email}</span>
                             </div>
                           </div>
+
+                          {/* 2. ✨ [추가] 모바일용 등급 & 볼트 현황판 */}
+                          <div className="flex items-center gap-2 p-2 bg-white rounded-xl border border-slate-100 shadow-sm">
+                            {/* 등급 배지 */}
+                            <div className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase border tracking-wider text-center ${
+                              userGrade === 'admin' ? 'bg-slate-800 text-white border-slate-700' :
+                              userGrade === 'pro' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                              'bg-slate-100 text-slate-500 border-slate-200'
+                            }`}>
+                              {userGrade === 'admin' ? 'ADMIN' : userGrade === 'pro' ? 'PRO' : 'FREE'}
+                            </div>
+                            
+                            {/* 볼트 잔액 */}
+                            <div className="flex-1 flex items-center justify-between px-3 py-1 bg-yellow-50 text-yellow-700 rounded-lg text-xs font-bold border border-yellow-100">
+                              <span className="flex items-center gap-1">⚡ 보유 볼트</span>
+                              <span className="text-sm">{volts.toLocaleString()} V</span>
+                            </div>
+                          </div>
+
+                          {/* 3. 로그아웃 버튼 */}
                           <button 
                             onClick={handleLogout}
                             className="w-full py-2 text-xs font-bold bg-white border border-slate-200 rounded-lg text-slate-600 shadow-sm hover:bg-slate-50 transition-colors"
@@ -889,22 +883,39 @@ const handleGenerate = async () => {
                       )}
                     </div>
 
-                    {/* [모바일 전용] 바로가기 링크들 */}
-                    <div className="md:hidden p-2 grid grid-cols-2 gap-1 border-b border-slate-100 bg-white">
-                        <a href={`https://blog.naver.com/${MY_BLOG_ID}`} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 transition-colors gap-1 text-slate-600">
-                           <img src="https://blog.naver.com/favicon.ico" className="w-5 h-5 opacity-70" alt="blog" />
-                           <span className="text-xs font-bold">내 블로그</span>
-                        </a>
-                         <a href={MY_INFLUENCER_URL} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 transition-colors gap-1 text-slate-600">
-                           <span className="text-lg">👑</span>
-                           <span className="text-xs font-bold">인플루언서</span>
-                        </a>
-                         <a href={`https://blog.naver.com/PostWriteForm.naver?blogId=${MY_BLOG_ID}`} target="_blank" rel="noreferrer" className={`col-span-2 flex items-center justify-center gap-2 p-3 rounded-xl hover:bg-blue-50 transition-colors ${themeStyles.accentText} font-bold bg-slate-50`}>
-                           <PenLine className="w-4 h-4" />
-                           <span className="text-xs">블로그 글쓰기 바로가기</span>
-                        </a>
+                    {/* [모바일 전용] 바로가기 링크들 & 설정 버튼 */}
+                    <div className="md:hidden p-2 grid grid-cols-2 gap-1 border-b border-slate-100 bg-white relative">
+                      
+                      {/* 설정 버튼 */}
+                      <button onClick={openProfileModal} className="absolute top-2 right-2 p-1 text-slate-300 hover:text-slate-600 z-10">
+                        <UserCog className="w-4 h-4" />
+                      </button>
+
+                      {/* 1. 내 블로그 링크 */}
+                      <div onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/${myBlogId}`, '_blank')} 
+                          className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 transition-colors gap-1 text-slate-600 cursor-pointer">
+                        <img src="https://blog.naver.com/favicon.ico" className="w-5 h-5 opacity-70" alt="blog" />
+                        <span className="text-xs font-bold">{myBlogId ? '내 블로그' : '블로그 연동'}</span>
+                        {!myBlogId && <span className="text-[9px] text-red-400">설정 필요</span>}
+                      </div>
+
+                      {/* 2. 인플루언서 링크 (✨ 여기 수정됨!) */}
+                      <div onClick={() => !myInfluencerUrl ? openProfileModal() : window.open(myInfluencerUrl, '_blank')} 
+                          className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 transition-colors gap-1 text-slate-600 cursor-pointer">
+                        <span className="text-lg">👑</span>
+                        <span className="text-xs font-bold">{myInfluencerUrl ? '인플루언서' : '인플루언서 연동'}</span>
+                        {/* ✨ [추가] 인플루언서도 없으면 '설정 필요' 뜸 */}
+                        {!myInfluencerUrl && <span className="text-[9px] text-red-400">설정 필요</span>}
+                      </div>
+
+                      {/* 3. 글쓰기 바로가기 */}
+                      <div onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/PostWriteForm.naver?blogId=${myBlogId}`, '_blank')}
+                          className={`col-span-2 flex items-center justify-center gap-2 p-3 rounded-xl hover:bg-blue-50 transition-colors ${themeStyles.accentText} font-bold bg-slate-50 cursor-pointer`}>
+                        <PenLine className="w-4 h-4" />
+                        <span className="text-xs">블로그 글쓰기 바로가기</span>
+                      </div>
                     </div>
-                    
+
                     {/* 설정 메뉴들 (Settings) */}
                     <div className="px-4 py-3 bg-white">
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Settings</p>
@@ -1466,16 +1477,44 @@ const handleGenerate = async () => {
           </div>
         </div>
       </div>
-{/* ✨ 4. 관리자 페이지 모달 (Props 추가됨!) */}
-      {showAdmin && user && (
-        <AdminPage 
-          onClose={() => setShowAdmin(false)} 
-          currentUserId={user.id} // ✨ 내 ID 전달
-          onMyGradeChanged={() => checkAdmin(user.id)} // ✨ 내 등급 다시 체크해! 라고 함수 전달
-        />
-      )}
-    </div>
-  );
-}
+
+      {/* ✨ 내 정보 설정 모달 */}
+          {isProfileModalOpen && (
+            <div className="fixed inset-0 bg-black/50 z-[80] flex items-center justify-center p-4">
+              <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-fade-in-up relative">
+                <button onClick={() => setIsProfileModalOpen(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+                <h3 className="text-lg font-bold text-slate-800 mb-1">내 블로그 정보 설정</h3>
+                <p className="text-xs text-slate-400 mb-4">입력해두시면 바로가기 버튼이 자동으로 연결됩니다!</p>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-600 mb-1 block">네이버 블로그 ID</label>
+                    {/* ✨ [수정] value와 onChange를 editBlogId로 변경 */}
+                    <input type="text" value={editBlogId} onChange={(e) => setEditBlogId(e.target.value)} placeholder="예: leedh428" className="w-full p-3 border rounded-xl text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-200 outline-none transition-all" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-600 mb-1 block">인플루언서 홈 URL (선택)</label>
+                    {/* ✨ [수정] value와 onChange를 editInfluencerUrl로 변경 */}
+                    <input type="text" value={editInfluencerUrl} onChange={(e) => setEditInfluencerUrl(e.target.value)} placeholder="https://in.naver.com/..." className="w-full p-3 border rounded-xl text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-200 outline-none transition-all" />
+                  </div>
+                  <button onClick={handleUpdateProfile} className="w-full py-3 mt-2 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 transition-colors">
+                    저장하기
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+    {/* ✨ 4. 관리자 페이지 모달 (Props 추가됨!) */}
+          {showAdmin && user && (
+            <AdminPage 
+              onClose={() => setShowAdmin(false)} 
+              currentUserId={user.id} // ✨ 내 ID 전달
+              onMyGradeChanged={() => checkAdmin(user.id)} // ✨ 내 등급 다시 체크해! 라고 함수 전달
+            />
+          )}
+        </div>
+      );
+    }
 
 export default App;
