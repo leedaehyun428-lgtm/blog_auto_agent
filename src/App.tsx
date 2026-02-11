@@ -4,7 +4,7 @@ import {
   Sparkles, Search, Copy, Clock, Trash2, CheckCircle, RotateCcw, Menu, X, 
   Utensils, Plane, Shirt, Landmark, Smile, AlignLeft, Smartphone, Monitor, 
   Download, Image as ImageIcon, PenLine, Save, XCircle, UploadCloud, DownloadCloud, 
-  Package, MessageSquarePlus, BarChart3, UserCog, LogOut
+  Package, MessageSquarePlus, BarChart3, UserCog, LogOut, LogIn
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
@@ -101,10 +101,12 @@ function App() {
   const [myInfluencerUrl, setMyInfluencerUrl] = useState('');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false); // 설정창 열기/닫기
 
-  //[신규] 모달 안에서만 쓸 '임시 수정용' 변수
+  // [신규] 모달 안에서만 쓸 '임시 수정용' 변수
   const [editBlogId, setEditBlogId] = useState('');
   const [editInfluencerUrl, setEditInfluencerUrl] = useState('');
 
+  // 모바일 로그인 오픈 여부
+  const [isMobileLoginOpen, setIsMobileLoginOpen] = useState(false);
 
 
   // 테마 스타일 정의
@@ -658,339 +660,239 @@ function App() {
 
       <div className={`max-w-4xl w-full bg-white/70 backdrop-blur-xl rounded-[2.5rem] shadow-2xl border ${themeStyles.containerBorder} min-h-[650px] flex flex-col overflow-hidden relative transition-all duration-500`}>
         
-        {/* Header */}
-        <div className="px-8 py-6 flex items-center justify-between z-20">
+        {/* Header 영역 - 모바일/PC 통합 대응 */}
+        <div className="px-4 md:px-8 py-4 md:py-6 flex items-center justify-between z-20 relative">
+          
+          {/* 1. 좌측 로고 영역 */}
           <div className="flex items-center gap-2 cursor-pointer group" onClick={resetToHome}>
-            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-lg group-hover:scale-105 transition-transform ${themeStyles.button}`}>
+            <div className={`w-9 h-9 md:w-10 md:h-10 rounded-2xl flex items-center justify-center text-white shadow-lg transition-transform ${themeStyles.button}`}>
               <Sparkles className="w-5 h-5" fill="currentColor" />
             </div>
             <div>
-              <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">Briter AI</h1>
-              <p className={`text-[10px] font-bold tracking-widest uppercase ${themeStyles.subText}`}>
+              <h1 className="text-lg md:text-xl font-extrabold text-slate-800 tracking-tight">Briter AI</h1>
+              <p className={`text-[9px] md:text-[10px] font-bold tracking-widest uppercase ${themeStyles.subText}`}>
                 {isTestMode ? 'Test Mode On' : 'AI Writing Assistant'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* ✨ [PC 전용] 링크 및 로그인 버튼들 (모바일에서는 숨김) */}
-            <div className="hidden md:flex items-center gap-3 bg-white/40 px-4 py-2 rounded-2xl border border-white/50 shadow-sm backdrop-blur-sm mr-2">
-  
-            {/* 내 블로그 */}
-            <button 
-              onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/${myBlogId}`, '_blank')}
-              className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${!myBlogId ? 'text-red-400 hover:text-red-500' : 'text-slate-500 hover:text-green-600'}`}
-              title={myBlogId ? '내 블로그 열기' : '블로그 연동 필요'}
-            >
-              <img src="https://blog.naver.com/favicon.ico" className="w-3.5 h-3.5 opacity-70" alt="N" />
-              <span className="hidden lg:inline">{/* 화면 좁으면 글자 숨김 */}
-                {myBlogId ? '블로그' : '연동필요'}
-              </span>
-            </button>
+          <div className="flex items-center gap-2">
             
-            <span className="text-slate-300 text-[10px]">|</span>
-  
-            {/* 인플루언서 */}
-            <button 
-              onClick={() => !myInfluencerUrl ? openProfileModal() : window.open(myInfluencerUrl, '_blank')}
-              className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${!myInfluencerUrl ? 'text-red-400 hover:text-red-500' : 'text-slate-500 hover:text-purple-600'}`}
-              title={myInfluencerUrl ? '인플루언서 홈 열기' : '인플루언서 연동 필요'}
-            >
-              <span>👑</span>
-              <span className="hidden lg:inline">
-                {myInfluencerUrl ? '인플루언서' : '연동필요'}
-              </span>
-            </button>
+            {/* 2. [PC 전용] 링크 박스 (로그인 유저만 보임) */}
+            {user && (
+              <div className="hidden md:flex items-center gap-3 bg-white/40 px-4 py-2 rounded-2xl border border-white/50 shadow-sm backdrop-blur-sm mr-2">
+                {/* 내 블로그 */}
+                <button 
+                  onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/${myBlogId}`, '_blank')}
+                  className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${!myBlogId ? 'text-red-400 hover:text-red-500' : 'text-slate-500 hover:text-green-600'}`}
+                  title={myBlogId ? '내 블로그 열기' : '블로그 연동 필요'}
+                >
+                  <img src="https://blog.naver.com/favicon.ico" className="w-3.5 h-3.5 opacity-70" alt="N" />
+                  <span className="hidden lg:inline">{myBlogId ? '블로그' : '연동필요'}</span>
+                </button>
+                <span className="text-slate-300 text-[10px]">|</span>
+                {/* 인플루언서 */}
+                <button 
+                  onClick={() => !myInfluencerUrl ? openProfileModal() : window.open(myInfluencerUrl, '_blank')}
+                  className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${!myInfluencerUrl ? 'text-red-400 hover:text-red-500' : 'text-slate-500 hover:text-purple-600'}`}
+                  title={myInfluencerUrl ? '인플루언서 홈 열기' : '인플루언서 연동 필요'}
+                >
+                  <span>👑</span>
+                  <span className="hidden lg:inline">{myInfluencerUrl ? '인플루언서' : '연동필요'}</span>
+                </button>
+                <span className="text-slate-300 text-[10px]">|</span>
+                {/* 글쓰기 */}
+                <button 
+                  onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/PostWriteForm.naver?blogId=${myBlogId}`, '_blank')}
+                  className={`flex items-center gap-1.5 text-xs font-bold hover:opacity-80 transition-colors ${themeStyles.accentText}`}
+                >
+                  <PenLine className="w-3.5 h-3.5" />
+                  <span className="hidden lg:inline">글쓰기</span>
+                </button>
+              </div>
+            )}
 
-            <span className="text-slate-300 text-[10px]">|</span>
-
-            {/* 글쓰기 */}
-            <button 
-              onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/PostWriteForm.naver?blogId=${myBlogId}`, '_blank')}
-              className={`flex items-center gap-1.5 text-xs font-bold hover:opacity-80 transition-colors ${themeStyles.accentText}`}
-            >
-              <PenLine className="w-3.5 h-3.5" />
-              <span className="hidden lg:inline">글쓰기</span>
-            </button>
-          </div>
-
-
-          {/* ✨ [PC 전용] 2. 유저 정보 & 설정 그룹 (우측 박스) */}
-          <div className="hidden md:flex items-center gap-3 bg-white/80 px-4 py-2 rounded-2xl border border-white/60 shadow-sm backdrop-blur-md">
+            {/* 3. 우측: 유저 정보 OR 로그인 버튼 */}
             {user ? (
               <>
-                {/* 설정 (톱니바퀴) */}
-                <button 
-                  onClick={openProfileModal} 
-                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-all"
-                  title="내 정보 설정"
-                >
-                  <UserCog className="w-4 h-4" />
-                </button>
-
-                {/* 등급 배지 */}
-                <div className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border tracking-wider ${
-                  userGrade === 'admin' ? 'bg-slate-900 text-white border-slate-700' :
-                  userGrade === 'pro' ? 'bg-blue-100 text-blue-600 border-blue-200' :
-                  'bg-green-100 text-green-600 border-green-200'
-                }`}>
-                  {userGrade === 'admin' ? 'ADMIN' : userGrade === 'pro' ? 'PRO' : 'BASIC'}
-                </div>
-
-                {/* 볼트 잔액 */}
-                <div className="flex items-center gap-1 px-2 py-0.5 bg-yellow-50 text-yellow-700 rounded-md text-xs font-bold border border-yellow-200 cursor-help" title="잔액 충전하기 (준비중)">
-                  <span>⚡</span>
-                  <span>{volts.toLocaleString()}</span>
-                </div>
-
-                {/* ✨ [복구됨] 프로필 사진 & 이름 & 로그아웃 */}
-                <div className="flex items-center gap-2 pl-2 border-l border-slate-200 ml-1">
-                  {/* 프로필 사진 추가 */}
-                  {user.user_metadata.avatar_url ? (
-                    <img 
-                      src={user.user_metadata.avatar_url} 
-                      alt="Profile" 
-                      referrerPolicy="no-referrer" // 깨짐 방지 필수!
-                      className="w-6 h-6 rounded-full border border-slate-200 shadow-sm"
-                    />
-                  ) : (
-                    <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 font-bold text-xs">
-                      {user.email?.[0].toUpperCase()}
-                    </div>
-                  )}
-                  
-                  <span className="text-xs font-bold text-slate-700 max-w-[80px] truncate">
-                    {user.user_metadata.full_name || '유저'}님
-                  </span>
-                  
-                  <button 
-                    onClick={handleLogout} 
-                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                    title="로그아웃"
-                  >
-                    <LogOut className="w-4 h-4" />
+                {/* (A) 로그인 상태: [PC용] 유저 정보 박스 */}
+                <div className="hidden md:flex items-center gap-3 bg-white/80 px-4 py-2 rounded-2xl border border-white/60 shadow-sm backdrop-blur-md">
+                  <button onClick={openProfileModal} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full transition-all" title="내 정보 설정">
+                    <UserCog className="w-4 h-4" />
                   </button>
+
+                  <div className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border tracking-wider ${
+                      userGrade === 'admin' ? 'bg-slate-900 text-white border-slate-700' :
+                      userGrade === 'pro' ? 'bg-blue-100 text-blue-600 border-blue-200' :
+                      'bg-green-100 text-green-600 border-green-200'
+                  }`}>
+                    {userGrade === 'admin' ? 'ADMIN' : userGrade === 'pro' ? 'PRO' : 'BASIC'}
+                  </div>
+
+                  <div className="flex items-center gap-1 px-2 py-0.5 bg-yellow-50 text-yellow-700 rounded-md text-xs font-bold border border-yellow-200 cursor-help" title="잔액 충전하기 (준비중)">
+                    <span>⚡</span><span>{volts.toLocaleString()}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2 pl-2 border-l border-slate-200 ml-1">
+                    {user.user_metadata.avatar_url ? (
+                      <img src={user.user_metadata.avatar_url} alt="Profile" referrerPolicy="no-referrer" className="w-6 h-6 rounded-full border border-slate-200 shadow-sm" />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs text-indigo-500 font-bold">{user.email?.[0].toUpperCase()}</div>
+                    )}
+                    <span className="text-xs font-bold text-slate-700 max-w-[80px] truncate">{user.user_metadata.full_name || '유저'}님</span>
+                    <button onClick={handleLogout} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors" title="로그아웃">
+                      <LogOut className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* (B) 로그인 상태: [공통] 햄버거 메뉴 버튼 & 드롭다운 */}
+                <div className="relative" ref={menuRef}>
+                  <button 
+                    onClick={() => setIsMenuOpen(!isMenuOpen)}
+                    className={`p-2.5 bg-white border border-white/60 shadow-sm text-slate-500 hover:${themeStyles.accentText} rounded-full transition-all active:scale-95`}
+                  >
+                    {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                  </button>
+
+                  {/* 드롭다운 메뉴 */}
+                  <AnimatePresence>
+                    {isMenuOpen && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }} 
+                        animate={{ opacity: 1, y: 0, scale: 1 }} 
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className="absolute right-0 top-full mt-3 w-72 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-white/50 z-50 overflow-hidden ring-1 ring-slate-900/5 origin-top-right"
+                      >
+                        {isAdmin && (
+                          <button onClick={() => setShowAdmin(true)} className="w-full flex items-center justify-center gap-2 px-4 py-3 mt-2 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 shadow-lg">
+                            <UserCog className="w-4 h-4" /> 관리자 페이지 열기
+                          </button>
+                        )}
+                        
+                        {/* 모바일용 프로필 영역 */}
+                        <div className="md:hidden px-5 py-4 bg-slate-50/80 border-b border-slate-100">
+                          <div className="flex flex-col gap-3">
+                            <div className="flex items-center gap-3">
+                              {user.user_metadata.avatar_url ? (
+                                <img src={user.user_metadata.avatar_url} referrerPolicy="no-referrer" className="w-10 h-10 rounded-full border border-white shadow-sm" />
+                              ) : (
+                                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 font-bold text-lg">{user.email?.[0].toUpperCase()}</div>
+                              )}
+                              <div className="flex flex-col">
+                                <span className="text-sm font-bold text-slate-800">{user.user_metadata.full_name || user.email?.split('@')[0]}님</span>
+                                <span className="text-[10px] text-slate-400">{user.email}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 p-2 bg-white rounded-xl border border-slate-100 shadow-sm">
+                              <div className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase border tracking-wider text-center ${
+                                userGrade === 'admin' ? 'bg-slate-800 text-white border-slate-700' :
+                                userGrade === 'pro' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                                'bg-slate-100 text-slate-500 border-slate-200'
+                              }`}>
+                                {userGrade === 'admin' ? 'ADMIN' : userGrade === 'pro' ? 'PRO' : 'FREE'}
+                              </div>
+                              <div className="flex-1 flex items-center justify-between px-3 py-1 bg-yellow-50 text-yellow-700 rounded-lg text-xs font-bold border border-yellow-100">
+                                <span>⚡ 보유 볼트</span><span>{volts.toLocaleString()} V</span>
+                              </div>
+                            </div>
+                            <button onClick={handleLogout} className="w-full py-2 text-xs font-bold bg-white border border-slate-200 rounded-lg text-slate-600 shadow-sm hover:bg-slate-50">로그아웃</button>
+                          </div>
+                        </div>
+
+                        {/* 모바일용 링크들 */}
+                        <div className="md:hidden p-2 grid grid-cols-2 gap-1 border-b border-slate-100 bg-white relative">
+                          <button onClick={openProfileModal} className="absolute top-2 right-2 p-1 text-slate-300 hover:text-slate-600 z-10"><UserCog className="w-4 h-4" /></button>
+                          
+                          <div onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/${myBlogId}`, '_blank')} className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 gap-1 text-slate-600 cursor-pointer">
+                            <img src="https://blog.naver.com/favicon.ico" className="w-5 h-5 opacity-70" alt="blog" />
+                            <span className="text-xs font-bold">{myBlogId ? '내 블로그' : '블로그 연동'}</span>
+                            {!myBlogId && <span className="text-[9px] text-red-400">설정 필요</span>}
+                          </div>
+                          
+                          <div onClick={() => !myInfluencerUrl ? openProfileModal() : window.open(myInfluencerUrl, '_blank')} className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 gap-1 text-slate-600 cursor-pointer">
+                            <span className="text-lg">👑</span>
+                            <span className="text-xs font-bold">{myInfluencerUrl ? '인플루언서' : '인플루언서 연동'}</span>
+                            {!myInfluencerUrl && <span className="text-[9px] text-red-400">설정 필요</span>}
+                          </div>
+
+                          <div onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/PostWriteForm.naver?blogId=${myBlogId}`, '_blank')} className={`col-span-2 flex items-center justify-center gap-2 p-3 rounded-xl hover:bg-blue-50 ${themeStyles.accentText} font-bold bg-slate-50 cursor-pointer`}>
+                            <PenLine className="w-4 h-4" /><span className="text-xs">블로그 글쓰기 바로가기</span>
+                          </div>
+                        </div>
+
+                        {/* 공통 설정 메뉴 */}
+                        <div className="px-4 py-3 bg-white">
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Settings</p>
+                          <button onClick={() => setIsTestMode(!isTestMode)} className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-slate-50 group">
+                            <span className={`text-sm font-bold ${isTestMode ? 'text-orange-500' : 'text-slate-600'}`}>{isTestMode ? '테스트 모드 (ON)' : '실전 모드 (OFF)'}</span>
+                            <div className={`w-9 h-5 rounded-full relative transition-colors ${isTestMode ? 'bg-orange-400' : 'bg-slate-200'}`}><div className={`w-3.5 h-3.5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${isTestMode ? 'left-5' : 'left-0.5'}`} /></div>
+                          </button>
+                          
+                          <div className="my-1 border-t border-slate-100" />
+                          
+                          <button onClick={exportHistory} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 text-sm text-slate-600"><DownloadCloud className="w-4 h-4 text-slate-400" /> 기록 백업하기</button>
+                          <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 text-sm text-slate-600"><UploadCloud className="w-4 h-4 text-slate-400" /> 기록 복원하기</button>
+                          <input type="file" ref={fileInputRef} onChange={importHistory} className="hidden" accept=".json" />
+                          
+                          <div className="my-1 border-t border-slate-100" />
+                          
+                          <button onClick={clearHistory} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 text-red-500 text-sm"><Trash2 className="w-4 h-4" /> 기록 전체 삭제</button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </>
             ) : (
-              // 비로그인 상태 (그대로 유지)
+              /* (C) 비로그인 상태: 로그인 버튼들 */
               <div className="flex items-center gap-2">
-              {/* 구글 로그인 */}
-              <button 
-                onClick={handleLogin}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200 shadow-sm hover:bg-slate-50 transition-all text-xs font-bold text-slate-600"
-              >
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-4 h-4" alt="G" />
-                구글 로그인
-              </button>
-              
-              {/* 카카오 로그인 */}
-              <button 
-                onClick={handleKakaoLogin}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#FEE500] hover:bg-[#FDD835] transition-all text-xs font-bold text-slate-900"
-              >
-                <img src="https://upload.wikimedia.org/wikipedia/commons/e/e3/KakaoTalk_logo.svg" className="w-3.5 h-3.5" alt="K" />
-                카카오 로그인
-              </button>
-            </div>
+                {/* [PC] 텍스트 버튼 (모바일 숨김) */}
+                <div className="hidden md:flex items-center gap-2">
+                  <button onClick={handleLogin} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-sm">
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-3.5 h-3.5" alt="G" /> 구글
+                  </button>
+                  <button onClick={handleKakaoLogin} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FEE500] text-xs font-bold text-slate-900 hover:bg-[#FDD835] transition-all shadow-sm">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/e/e3/KakaoTalk_logo.svg" className="w-3 h-3" alt="K" /> 카카오
+                  </button>
+                </div>
+
+                {/* [모바일] 아이콘 버튼 & 드롭다운 선택 메뉴 ✨ */}
+                <div className="relative md:hidden">
+                  <button 
+                    onClick={() => setIsMobileLoginOpen(!isMobileLoginOpen)} 
+                    className="p-2.5 bg-white border border-slate-200 text-slate-500 rounded-full shadow-sm active:scale-95 transition-all"
+                    title="로그인하기"
+                  >
+                    {isMobileLoginOpen ? <X className="w-5 h-5" /> : <LogIn className="w-5 h-5" />}
+                  </button>
+
+                  {/* 모바일 로그인 선택 팝업 (말풍선) */}
+                  <AnimatePresence>
+                    {isMobileLoginOpen && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }} 
+                        animate={{ opacity: 1, y: 0, scale: 1 }} 
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className="absolute right-0 top-full mt-2 w-48 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-100 p-2 z-50 flex flex-col gap-2 origin-top-right"
+                      >
+                        <button onClick={handleLogin} className="flex items-center justify-center gap-2 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 active:scale-95 transition-all">
+                          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-4 h-4" alt="G" />
+                          <span className="text-xs font-bold text-slate-700">구글 로그인</span>
+                        </button>
+                        <button onClick={handleKakaoLogin} className="flex items-center justify-center gap-2 py-2.5 bg-[#FEE500] rounded-xl shadow-sm hover:bg-[#FDD835] active:scale-95 transition-all">
+                          <img src="https://upload.wikimedia.org/wikipedia/commons/e/e3/KakaoTalk_logo.svg" className="w-4 h-4" alt="K" />
+                          <span className="text-xs font-bold text-slate-900">카카오 로그인</span>
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
             )}
           </div>
-          
-          {/* 햄버거 버튼 영역 */}
-            {user && (
-            <div className="relative" ref={menuRef}>
-              <button 
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className={`p-2.5 bg-white border border-white/60 shadow-sm text-slate-500 hover:${themeStyles.accentText} rounded-full transition-all active:scale-95`}
-              >
-                {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              </button>
-            </div>
-          )}
-
-          {/* 메뉴 기능 */}
-            <div className="relative" ref={menuRef}>
-
-              {/* ✨ 드롭다운 메뉴 (반드시 relative div 안에 있어야 함) */}
-              <AnimatePresence>
-                {isMenuOpen && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute right-0 top-full mt-3 w-72 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-white/50 z-50 overflow-hidden ring-1 ring-slate-900/5 origin-top-right"
-                  >
-                  {/* ✨ 관리자 버튼 (isAdmin이 true일 때만 보임) */}
-                  {isAdmin && (
-                    <button 
-                      onClick={() => setShowAdmin(true)}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 mt-2 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 transition-colors shadow-lg"
-                    >
-                      <UserCog className="w-4 h-4" />
-                      관리자 페이지 열기
-                    </button>
-                  )}
-
-                  {/* [모바일 전용] 프로필 및 로그인 영역 */}
-                    <div className="md:hidden px-5 py-4 bg-slate-50/80 border-b border-slate-100">
-                      {user ? (
-                        <div className="flex flex-col gap-3">
-                          {/* 1. 프로필 사진 & 이름 */}
-                          <div className="flex items-center gap-3">
-                            {user.user_metadata.avatar_url ? (
-                              <img 
-                                src={user.user_metadata.avatar_url} 
-                                alt="Profile" 
-                                referrerPolicy="no-referrer" // ✨ 모바일에서도 이미지 깨짐 방지
-                                className="w-10 h-10 rounded-full border border-white shadow-sm" 
-                              />
-                            ) : (
-                              <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 font-bold text-lg">
-                                {user.email?.[0].toUpperCase()}
-                              </div>
-                            )}
-                            <div className="flex flex-col">
-                              <span className="text-sm font-bold text-slate-800">
-                                {user.user_metadata.full_name || user.email?.split('@')[0]}님
-                              </span>
-                              <span className="text-[10px] text-slate-400">{user.email}</span>
-                            </div>
-                          </div>
-
-                          {/* 2. ✨ [추가] 모바일용 등급 & 볼트 현황판 */}
-                          <div className="flex items-center gap-2 p-2 bg-white rounded-xl border border-slate-100 shadow-sm">
-                            {/* 등급 배지 */}
-                            <div className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase border tracking-wider text-center ${
-                              userGrade === 'admin' ? 'bg-slate-800 text-white border-slate-700' :
-                              userGrade === 'pro' ? 'bg-purple-100 text-purple-700 border-purple-200' :
-                              'bg-slate-100 text-slate-500 border-slate-200'
-                            }`}>
-                              {userGrade === 'admin' ? 'ADMIN' : userGrade === 'pro' ? 'PRO' : 'FREE'}
-                            </div>
-                            
-                            {/* 볼트 잔액 */}
-                            <div className="flex-1 flex items-center justify-between px-3 py-1 bg-yellow-50 text-yellow-700 rounded-lg text-xs font-bold border border-yellow-100">
-                              <span className="flex items-center gap-1">⚡ 보유 볼트</span>
-                              <span className="text-sm">{volts.toLocaleString()} V</span>
-                            </div>
-                          </div>
-
-                          {/* 3. 로그아웃 버튼 */}
-                          <button 
-                            onClick={handleLogout}
-                            className="w-full py-2 text-xs font-bold bg-white border border-slate-200 rounded-lg text-slate-600 shadow-sm hover:bg-slate-50 transition-colors"
-                          >
-                            로그아웃
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <p className="text-xs text-slate-400 mb-2 font-medium">로그인하고 기록을 저장하세요!</p>
-                          {/* 모바일 구글 로그인 */}
-                          <button 
-                            onClick={handleLogin}
-                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-all active:scale-95"
-                          >
-                            <svg className="w-4 h-4" viewBox="0 0 24 24">
-                                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                            </svg>
-                            <span className="text-sm font-bold text-slate-700">구글 로그인</span>
-                          </button>
-                          
-                          {/* 모바일 카카오 로그인 */}
-                          <button 
-                            onClick={handleKakaoLogin}
-                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#FEE500] border border-[#FEE500] rounded-xl shadow-sm hover:bg-[#FDD835] transition-all active:scale-95"
-                          >
-                             <svg className="w-4 h-4 text-slate-900" viewBox="0 0 24 24" fill="currentColor">
-                               <path d="M12 3C5.925 3 1 6.925 1 11.772c0 2.91 1.879 5.48 4.788 7.02-.215.79-.785 2.87-0.9 3.32-.14.545.2.535.42.355.285-.235 4.545-3.085 5.17-3.52.505.075 1.025.115 1.522.115 6.075 0 11-3.925 11-8.772C23 6.925 18.075 3 12 3z"/>
-                             </svg>
-                             <span className="text-sm font-bold text-slate-900">카카오 로그인</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* [모바일 전용] 바로가기 링크들 & 설정 버튼 */}
-                    <div className="md:hidden p-2 grid grid-cols-2 gap-1 border-b border-slate-100 bg-white relative">
-                      
-                      {/* 설정 버튼 */}
-                      <button onClick={openProfileModal} className="absolute top-2 right-2 p-1 text-slate-300 hover:text-slate-600 z-10">
-                        <UserCog className="w-4 h-4" />
-                      </button>
-
-                      {/* 1. 내 블로그 링크 */}
-                      <div onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/${myBlogId}`, '_blank')} 
-                          className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 transition-colors gap-1 text-slate-600 cursor-pointer">
-                        <img src="https://blog.naver.com/favicon.ico" className="w-5 h-5 opacity-70" alt="blog" />
-                        <span className="text-xs font-bold">{myBlogId ? '내 블로그' : '블로그 연동'}</span>
-                        {!myBlogId && <span className="text-[9px] text-red-400">설정 필요</span>}
-                      </div>
-
-                      {/* 2. 인플루언서 링크 (✨ 여기 수정됨!) */}
-                      <div onClick={() => !myInfluencerUrl ? openProfileModal() : window.open(myInfluencerUrl, '_blank')} 
-                          className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 transition-colors gap-1 text-slate-600 cursor-pointer">
-                        <span className="text-lg">👑</span>
-                        <span className="text-xs font-bold">{myInfluencerUrl ? '인플루언서' : '인플루언서 연동'}</span>
-                        {/* ✨ [추가] 인플루언서도 없으면 '설정 필요' 뜸 */}
-                        {!myInfluencerUrl && <span className="text-[9px] text-red-400">설정 필요</span>}
-                      </div>
-
-                      {/* 3. 글쓰기 바로가기 */}
-                      <div onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/PostWriteForm.naver?blogId=${myBlogId}`, '_blank')}
-                          className={`col-span-2 flex items-center justify-center gap-2 p-3 rounded-xl hover:bg-blue-50 transition-colors ${themeStyles.accentText} font-bold bg-slate-50 cursor-pointer`}>
-                        <PenLine className="w-4 h-4" />
-                        <span className="text-xs">블로그 글쓰기 바로가기</span>
-                      </div>
-                    </div>
-
-                    {/* 설정 메뉴들 (Settings) */}
-                    <div className="px-4 py-3 bg-white">
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Settings</p>
-                      
-                      <button 
-                        onClick={() => setIsTestMode(!isTestMode)}
-                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group"
-                      >
-                        <div className="flex flex-col items-start">
-                          <span className={`text-sm font-bold ${isTestMode ? 'text-orange-500' : 'text-slate-600'}`}>
-                            {isTestMode ? '테스트 모드 (ON)' : '실전 모드 (OFF)'}
-                          </span>
-                        </div>
-                        <div className={`w-9 h-5 rounded-full relative transition-colors ${isTestMode ? 'bg-orange-400' : 'bg-slate-200'}`}>
-                          <div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm absolute top-0.5 transition-all ${isTestMode ? 'left-5' : 'left-0.5'}`} />
-                        </div>
-                      </button>
-
-                      <div className="my-1 border-t border-slate-100" />
-
-                      <button onClick={exportHistory} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors text-sm text-slate-600">
-                        <DownloadCloud className="w-4 h-4 text-slate-400" /> 기록 백업하기
-                      </button>
-                      
-                      <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors text-sm text-slate-600">
-                        <UploadCloud className="w-4 h-4 text-slate-400" /> 기록 복원하기
-                      </button>
-                      <input type="file" ref={fileInputRef} onChange={importHistory} className="hidden" accept=".json" />
-
-                      <div className="my-1 border-t border-slate-100" />
-
-                      <button 
-                        onClick={clearHistory}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 text-red-500 transition-colors text-sm"
-                      >
-                        <Trash2 className="w-4 h-4" /> 기록 전체 삭제
-                      </button>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
         </div>
+
 
         {/* Body */}
         <div className="p-4 md:p-8 flex-1 flex flex-col overflow-y-auto custom-scrollbar">
