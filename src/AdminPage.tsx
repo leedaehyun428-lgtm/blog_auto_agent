@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   X, RefreshCw, Plus, Minus, AlertCircle, CheckCircle, 
   ShieldAlert, Zap, XCircle, ChevronLeft, ChevronRight 
@@ -46,6 +46,7 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
   
   // ✨ Toast 상태 관리
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastIdRef = useRef(0);
 
   // ✨ 페이지네이션 상태 (로그 탭용)
   const [page, setPage] = useState(1);
@@ -54,23 +55,17 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
   // 로그 필터 상태
   const [logFilter, setLogFilter] = useState<'all' | 'use' | 'charge' | 'refund'>('all');
 
-  /* eslint-disable react-hooks/exhaustive-deps */
-  useEffect(() => {
-    fetchUsers();
-    fetchLogs();
-  }, [page]);
-  /* eslint-enable react-hooks/exhaustive-deps */ // 페이지가 바뀔 때마다 로그 다시 가져옴
-
   // ✨ Toast 추가 함수 (3초 후 자동 삭제)
   const addToast = (message: string, type: 'success' | 'error' = 'success') => {
-    const id = Date.now();
+    toastIdRef.current += 1;
+    const id = toastIdRef.current;
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 3000);
   };
 
-  const fetchUsers = async () => {    const { data: profiles, error } = await supabase
+  const fetchUsers = useCallback(async () => {    const { data: profiles, error } = await supabase
       .from('profiles')
       .select('*')
       .order('created_at', { ascending: false });
@@ -80,9 +75,9 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
       addToast('유저 목록을 불러오지 못했습니다.', 'error');
     } else {
       setUsers(profiles || []);
-    }  };
+    }  }, []);
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     // ✨ 페이지네이션 적용: range(시작, 끝)
     const start = (page - 1) * LOGS_PER_PAGE;
     const end = start + LOGS_PER_PAGE - 1;
@@ -99,10 +94,22 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
     } else {
       setLogs(data || []);
     }
-  };
+  }, [page]);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  useEffect(() => {
+    if (activeTab === 'logs') {
+      fetchLogs();
+    }
+  }, [activeTab, fetchLogs]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
 // ⚡ 볼트 수정 함수 (낙관적 업데이트 적용: UI 먼저 변경 -> 서버 전송)
-  const updateVolts = async (userId: string, currentVolts: number, change: number, userEmail: string) => {
+  const updateVolts = async (userId: string, currentVolts: number, change: number, userEmail?: string) => {
     // 1. 계산된 새로운 값
     const newVolts = currentVolts + change;
     if (newVolts < 0) return addToast("0보다 작을 수 없습니다.", 'error');
@@ -115,44 +122,48 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, volts: newVolts } : u));
     
     // 토스트도 즉시 띄움 (기다리지 않음)
-    addToast(`${userEmail}님의 볼트를 ${change > 0 ? '+' : ''}${change} 변경했습니다.`);
+    addToast(`${userEmail ?? '이메일 정보 없음'}님의 볼트를 ${change > 0 ? '+' : ''}${change} 변경했습니다.`);
 
-    try {
-      // 3. 서버에 실제 데이터 전송 (비동기)
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ volts: newVolts })
-        .eq('id', userId);
+    // 3. 서버에 실제 데이터 전송 (비동기)
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ volts: newVolts })
+      .eq('id', userId);
 
-      if (updateError) throw updateError;
+    if (updateError) {
+      console.error('볼트 업데이트 실패:', updateError);
+      setUsers(prevUsers);
+      addToast('볼트 변경에 실패했습니다.', 'error');
+      return;
+    }
 
-      // 4. 로그 저장 (이것도 조용히 백그라운드 처리)
-      const { error: logError } = await supabase.from('generation_logs').insert({
-        user_id: userId,
-        keyword: change > 0 ? '관리자 지급 (보너스)' : '관리자 차감 (페널티)',
-        theme: 'SYSTEM',
-        used_volts: change * -1,
-        status: change > 0 ? 'admin_gift' : 'admin_deduct',
-        error_message: `Admin adjusted balance by ${change} VT`
+    // 4. 로그 저장 (실패해도 볼트 변경은 유지)
+    const { error: logError } = await supabase.from('generation_logs').insert({
+      user_id: userId,
+      keyword: change > 0 ? '관리자 지급 (보너스)' : '관리자 차감 (페널티)',
+      theme: 'SYSTEM',
+      // 일부 스키마에서 음수 제약이 있을 수 있어 절대값으로 저장하고 status로 방향을 구분
+      used_volts: Math.abs(change),
+      status: change > 0 ? 'admin_gift' : 'admin_deduct',
+      error_message: `Admin adjusted balance by ${change} VT`
+    });
+
+    if (logError) {
+      console.error('관리자 로그 저장 실패:', {
+        code: logError.code,
+        message: logError.message,
+        details: logError.details,
+        hint: logError.hint,
       });
+      addToast(
+        `볼트는 반영됐지만 로그 저장 실패: ${logError.code ?? 'unknown'} ${logError.message ?? ''}`,
+        'error',
+      );
+    }
 
-      if (logError) throw logError;
-
-      // 5. 로그 탭이 보고 있다면, 로그 목록만 조용히 갱신 (사용자 방해 X)
-      if (activeTab === 'logs') {
-        const { data: newLogs } = await supabase
-          .from('generation_logs')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(20); // 최신 것만 살짝 긁어옴
-        if (newLogs) setLogs(newLogs);
-      }
-
-    } catch (error) {
-      // 💥 실패 시: 아까 백업해둔 값으로 UI 롤백
-      console.error("업데이트 실패:", error);
-      setUsers(prevUsers); 
-      addToast("서버 오류로 취소되었습니다.", 'error');
+    // 5. 로그 탭 최신화
+    if (activeTab === 'logs') {
+      await fetchLogs();
     }
   };
   
@@ -323,14 +334,16 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
                   .filter((log) => {
                     if (logFilter === 'all') return true;
                     if (logFilter === 'refund') return log.status === 'refunded';
-                    if (logFilter === 'charge') return (log.used_volts < 0 && log.status !== 'refunded') || log.status === 'admin_gift';
-                    if (logFilter === 'use') return (log.used_volts > 0 && log.status !== 'refunded') || log.status === 'admin_deduct';
+                    if (logFilter === 'charge') return log.status === 'admin_gift' || (log.used_volts < 0 && log.status !== 'refunded');
+                    if (logFilter === 'use') return log.status === 'admin_deduct' || (log.used_volts > 0 && log.status !== 'refunded');
                     return true;
                   })
                   .map((log) => {
                     const targetUser = users.find(u => u.id === log.user_id);
                     const userName = targetUser ? (targetUser.user_name || targetUser.full_name || '이름 없음') : '알 수 없음';
                     const userEmail = targetUser ? targetUser.email : log.user_id.slice(0, 8) + '...';
+                    const isChargeLog = log.status === 'admin_gift' || (log.used_volts < 0 && log.status !== 'refunded');
+                    const isUseLog = log.status === 'admin_deduct' || (log.used_volts > 0 && log.status !== 'refunded');
 
                     return (
                       <div key={log.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 hover:border-blue-300 transition-colors">
@@ -339,13 +352,12 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
                         <div className="flex items-start gap-3 overflow-hidden">
                           <div className={`mt-1 p-2 rounded-full shrink-0 ${
                             log.status === 'refunded' ? 'bg-red-100 text-red-500' :
-                            log.status === 'admin_gift' ? 'bg-purple-100 text-purple-600' :
-                            log.used_volts < 0 ? 'bg-purple-100 text-purple-600' : 
-                            log.status === 'admin_deduct' ? 'bg-orange-100 text-orange-600' :
+                            isChargeLog ? 'bg-purple-100 text-purple-600' :
+                            isUseLog ? 'bg-orange-100 text-orange-600' :
                             'bg-green-100 text-green-600' 
                           }`}>
                             {log.status === 'refunded' ? <XCircle className="w-5 h-5" /> : 
-                            (log.used_volts < 0 || log.status === 'admin_gift') ? <Zap className="w-5 h-5" /> :
+                            isChargeLog ? <Zap className="w-5 h-5" /> :
                             log.status.includes('admin') ? <ShieldAlert className="w-5 h-5" /> :
                             <CheckCircle className="w-5 h-5" />}
                           </div>
@@ -371,9 +383,9 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
                         <div className="flex justify-between md:block items-center pl-12 md:pl-0 md:text-right w-full md:w-auto">
                            <div className="text-xs text-slate-400 md:hidden">변동 내역</div>
                            <div className="flex flex-col items-end">
-                             {log.status === 'admin_gift' ? (
+                             {isChargeLog ? (
                                  <div className="font-bold text-base md:text-lg text-purple-600 whitespace-nowrap">⚡ +{Math.abs(log.used_volts)}</div>
-                             ) : (log.status === 'admin_deduct' || (log.used_volts > 0)) ? ( 
+                             ) : isUseLog ? ( 
                                  <div className={`font-bold text-base md:text-lg whitespace-nowrap ${log.status === 'refunded' ? 'text-slate-400 line-through' : 'text-orange-600'}`}>⚡ -{Math.abs(log.used_volts)}</div>
                              ) : ( 
                                  <div className="font-bold text-base md:text-lg text-purple-600 whitespace-nowrap">⚡ +{Math.abs(log.used_volts)}</div>
@@ -414,4 +426,5 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
     </div>
   );
 }
+
 

@@ -61,9 +61,10 @@ function App() {
   const [selectedTheme, setSelectedTheme] = useState<ThemeType>('restaurant');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   
-  const [isTestMode, setIsTestMode] = useState(true); 
-  const [resultIsTestMode, setResultIsTestMode] = useState(true);
+  const [mode, setMode] = useState<'basic' | 'pro'>('basic');
+  const [resultMode, setResultMode] = useState<'basic' | 'pro'>('basic');
   const [isMobileView, setIsMobileView] = useState(false);
+  const isBasicMode = mode === 'basic';
 
   // 편집 모드 상태
   const [isEditing, setIsEditing] = useState(false);
@@ -130,7 +131,7 @@ function App() {
 
 
   // 테마 스타일 정의
-  const themeStyles = isTestMode ? {
+  const themeStyles = isBasicMode ? {
     bg: "from-orange-50 via-amber-50 to-yellow-50",
     containerBorder: "border-orange-100",
     accentText: "text-orange-600",
@@ -207,13 +208,13 @@ function App() {
   } = useHistory({
     user,
     selectedTheme,
-    isTestMode,
+    mode,
     notify,
     requestConfirm,
     setKeyword: handleKeywordChange,
     setResult,
     setSelectedTheme,
-    setResultIsTestMode,
+    setResultMode,
     setStep,
     setIsMobileView,
     setIsEditing,
@@ -227,7 +228,7 @@ function App() {
     user,
     keyword,
     setKeywordError,
-    isTestMode,
+    mode,
     selectedTheme,
     useGuide,
     guide,
@@ -240,7 +241,7 @@ function App() {
     setResult,
     setCopyStatus,
     setStep,
-    setResultIsTestMode,
+    setResultMode,
     setIsAnalyzing,
     setAnalysisData,
     setExposureGuide,
@@ -504,10 +505,10 @@ function App() {
       <div className="fixed left-[-9999px] top-0">
         <div 
           ref={thumbnailRef}
-          className={`w-[1200px] h-[1200px] flex flex-col items-center justify-center p-12 relative overflow-hidden bg-gradient-to-br ${isTestMode ? 'from-orange-50 to-amber-100' : 'from-blue-50 to-indigo-100'}`}
+          className={`w-[1200px] h-[1200px] flex flex-col items-center justify-center p-12 relative overflow-hidden bg-gradient-to-br ${isBasicMode ? 'from-orange-50 to-amber-100' : 'from-blue-50 to-indigo-100'}`}
         >
-          <div className={`absolute top-[-150px] right-[-150px] w-[600px] h-[600px] rounded-full blur-[100px] opacity-30 ${isTestMode ? 'bg-orange-400' : 'bg-blue-400'}`}></div>
-          <div className={`absolute bottom-[-150px] left-[-150px] w-[600px] h-[600px] rounded-full blur-[100px] opacity-30 ${isTestMode ? 'bg-yellow-400' : 'bg-purple-400'}`}></div>
+          <div className={`absolute top-[-150px] right-[-150px] w-[600px] h-[600px] rounded-full blur-[100px] opacity-30 ${isBasicMode ? 'bg-orange-400' : 'bg-blue-400'}`}></div>
+          <div className={`absolute bottom-[-150px] left-[-150px] w-[600px] h-[600px] rounded-full blur-[100px] opacity-30 ${isBasicMode ? 'bg-yellow-400' : 'bg-purple-400'}`}></div>
           
           <div className="z-10 text-center flex flex-col items-center gap-10">
             <div className={`px-10 py-4 rounded-full text-4xl font-bold bg-white/80 backdrop-blur shadow-sm ${themeStyles.accentText}`}>
@@ -521,7 +522,7 @@ function App() {
             </p>
           </div>
           <div className="absolute bottom-16 right-16 flex items-center gap-4 opacity-50">
-            <div className={`w-5 h-5 rounded-full ${isTestMode ? 'bg-orange-500' : 'bg-blue-500'}`}></div>
+            <div className={`w-5 h-5 rounded-full ${isBasicMode ? 'bg-orange-500' : 'bg-blue-500'}`}></div>
             <span className="text-4xl font-bold text-slate-400 tracking-widest">Briter AI</span>
           </div>
         </div>
@@ -530,7 +531,7 @@ function App() {
       <div className={`max-w-4xl w-full bg-white/70 backdrop-blur-xl rounded-[2.5rem] shadow-2xl border ${themeStyles.containerBorder} min-h-[650px] flex flex-col overflow-hidden relative transition-all duration-500`}>
         <Header
           user={user}
-          isTestMode={isTestMode}
+          mode={mode}
           themeStyles={themeStyles}
           resetToHome={resetToHome}
           myBlogId={myBlogId}
@@ -544,7 +545,7 @@ function App() {
           menuRef={menuRef}
           isAdmin={isAdmin}
           setShowAdmin={setShowAdmin}
-          setIsTestMode={setIsTestMode}
+          setMode={setMode}
           exportHistory={exportHistory}
           fileInputRef={fileInputRef}
           importHistory={importHistory}
@@ -571,8 +572,8 @@ function App() {
             step={step}
             isLoading={isLoading}
             isAnalyzing={isAnalyzing}
-            isTestMode={isTestMode}
-            resultIsTestMode={resultIsTestMode}
+            mode={mode}
+            resultMode={resultMode}
             isMobileView={isMobileView}
             isEditing={isEditing}
             keyword={keyword}
@@ -702,6 +703,7 @@ function App() {
     }
 
 export default App;
+
 
 
 

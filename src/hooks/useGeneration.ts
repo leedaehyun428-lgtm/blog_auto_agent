@@ -1,6 +1,6 @@
 ﻿import type { Dispatch, SetStateAction } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { analyzeKeyword, generateBlogPost, searchInfo } from '../api';
+import { analyzeKeyword, buildBasicContext, generateBlogPost, searchInfo } from '../api';
 import type { ThemeType } from '../api';
 import { supabase } from '../supabaseClient';
 
@@ -26,7 +26,7 @@ interface UseGenerationParams {
   user: User | null;
   keyword: string;
   setKeywordError: (value: string) => void;
-  isTestMode: boolean;
+  mode: 'basic' | 'pro';
   selectedTheme: ThemeType;
   useGuide: boolean;
   guide: string;
@@ -39,7 +39,7 @@ interface UseGenerationParams {
   setResult: (value: string) => void;
   setCopyStatus: (value: string) => void;
   setStep: (value: 'idle' | 'searching' | 'writing' | 'done') => void;
-  setResultIsTestMode: (value: boolean) => void;
+  setResultMode: (value: 'basic' | 'pro') => void;
   setIsAnalyzing: (value: boolean) => void;
   setAnalysisData: Dispatch<SetStateAction<AnalysisData | null>>;
   setExposureGuide: Dispatch<SetStateAction<ExposureGuide | null>>;
@@ -53,6 +53,10 @@ interface UseGenerationParams {
 }
 
 const PAYMENT_ERROR = '볼트가 부족하거나 결제 중 오류가 발생했습니다. 충전이 필요할 수 있습니다.';
+const MODE_COST: Record<'basic' | 'pro', number> = {
+  basic: 20,
+  pro: 100,
+};
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -75,7 +79,7 @@ export function useGeneration({
   user,
   keyword,
   setKeywordError,
-  isTestMode,
+  mode,
   selectedTheme,
   useGuide,
   guide,
@@ -88,7 +92,7 @@ export function useGeneration({
   setResult,
   setCopyStatus,
   setStep,
-  setResultIsTestMode,
+  setResultMode,
   setIsAnalyzing,
   setAnalysisData,
   setExposureGuide,
@@ -144,6 +148,8 @@ export function useGeneration({
     }
   };
 
+  const cost = MODE_COST[mode];
+
   const handleGenerate = async () => {
     if (!user) {
       const shouldLogin = await requestConfirm({
@@ -163,7 +169,7 @@ export function useGeneration({
     setKeywordError('');
     const shouldProceed = await requestConfirm({
       title: '볼트 차감 확인',
-      message: `⚡ 10 볼트가 차감됩니다.\n(현재 잔액: ${volts} V)\n\n진행하시겠습니까?`,
+      message: `⚡ ${cost} 볼트가 차감됩니다.\n모드: ${mode === 'pro' ? '고성능 모드' : '일반 모드'}\n(현재 잔액: ${volts} V)\n\n진행하시겠습니까?`,
       confirmText: '진행',
       cancelText: '취소',
     });
@@ -175,16 +181,21 @@ export function useGeneration({
 
     try {
       const { data: isSuccess, error: payError } = await supabase
-        .rpc('deduct_volts', { row_id: user.id, amount: 10 });
+        .rpc('deduct_volts', { row_id: user.id, amount: cost });
 
       if (payError || !isSuccess) {
         throw new Error(PAYMENT_ERROR);
       }
 
-      setVolts((prev) => prev - 10);
+      setVolts((prev) => prev - cost);
 
-      setStep('searching');
-      const searchData = await searchInfo(keyword, isTestMode, selectedTheme);
+      let searchData = '';
+      if (mode === 'pro') {
+        setStep('searching');
+        searchData = await searchInfo(keyword, mode, selectedTheme);
+      } else {
+        searchData = buildBasicContext(keyword, selectedTheme);
+      }
 
       setStep('writing');
       const blogPost = await generateBlogPost(
@@ -195,7 +206,7 @@ export function useGeneration({
       );
 
       setResult(blogPost);
-      setResultIsTestMode(isTestMode);
+      setResultMode(mode);
       setStep('done');
       await saveToHistory(keyword, blogPost);
 
@@ -203,18 +214,19 @@ export function useGeneration({
         user_id: user.id,
         keyword,
         theme: selectedTheme,
-        used_volts: 10,
+        used_volts: cost,
         status: 'success',
+        error_message: `mode=${mode}; path=${mode === 'pro' ? 'perplexity+gemini' : 'gemini-only'}`,
       });
     } catch (error: unknown) {
       console.error(error);
       const message = getErrorMessage(error);
 
       if (message !== PAYMENT_ERROR) {
-        await supabase.rpc('refund_volts', { row_id: user.id, amount: 10 });
-        setVolts((prev) => prev + 10);
+        await supabase.rpc('refund_volts', { row_id: user.id, amount: cost });
+        setVolts((prev) => prev + cost);
 
-        notify('info', `오류로 차감된 10 볼트가 자동 환불되었습니다: ${message}`);
+        notify('info', `오류로 차감된 ${cost} 볼트가 자동 환불되었습니다: ${message}`);
 
         const detailedError = getDetailedError(error);
 
@@ -222,6 +234,7 @@ export function useGeneration({
           user_id: user.id,
           keyword,
           status: 'refunded',
+          used_volts: cost,
           error_message: detailedError,
         });
 

@@ -1,6 +1,7 @@
 ﻿import type { ChangeEvent, RefObject } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { motion, AnimatePresence } from 'framer-motion';
+import type { GenerateMode } from '../../api';
 import {
   Sparkles,
   Menu,
@@ -22,7 +23,7 @@ interface ThemeStyles {
 
 interface HeaderProps {
   user: User | null;
-  isTestMode: boolean;
+  mode: GenerateMode;
   themeStyles: ThemeStyles;
   resetToHome: () => void;
   myBlogId: string;
@@ -36,7 +37,7 @@ interface HeaderProps {
   menuRef: RefObject<HTMLDivElement | null>;
   isAdmin: boolean;
   setShowAdmin: (value: boolean) => void;
-  setIsTestMode: (value: boolean) => void;
+  setMode: (value: GenerateMode) => void;
   exportHistory: () => void;
   fileInputRef: RefObject<HTMLInputElement | null>;
   importHistory: (event: ChangeEvent<HTMLInputElement>) => void;
@@ -49,7 +50,7 @@ interface HeaderProps {
 
 export default function Header({
   user,
-  isTestMode,
+  mode,
   themeStyles,
   resetToHome,
   myBlogId,
@@ -63,7 +64,7 @@ export default function Header({
   menuRef,
   isAdmin,
   setShowAdmin,
-  setIsTestMode,
+  setMode,
   exportHistory,
   fileInputRef,
   importHistory,
@@ -73,47 +74,55 @@ export default function Header({
   isMobileLoginOpen,
   setIsMobileLoginOpen,
 }: HeaderProps) {
+  const isBasicMode = mode === 'basic';
   return (
     <div className="px-4 md:px-8 py-4 md:py-6 flex items-center justify-between z-20 relative">
-      <div className="flex items-center gap-2 cursor-pointer group" onClick={resetToHome}>
+      <div className="flex items-center gap-2 cursor-pointer group shrink-0" onClick={resetToHome}>
         <div className={`w-9 h-9 md:w-10 md:h-10 rounded-2xl flex items-center justify-center text-white shadow-lg transition-transform ${themeStyles.button}`}>
           <Sparkles className="w-5 h-5" fill="currentColor" />
         </div>
         <div>
           <h1 className="text-lg md:text-xl font-extrabold text-slate-800 tracking-tight">Briter AI</h1>
-          <p className={`text-[9px] md:text-[10px] font-bold tracking-widest uppercase ${themeStyles.subText}`}>
-            {isTestMode ? 'Test Mode On' : 'AI Writing Assistant'}
+          <p className={`text-[9px] md:text-[10px] font-bold tracking-widest uppercase whitespace-nowrap ${themeStyles.subText}`}>
+            {isBasicMode ? 'Basic Mode' : 'Pro Mode'}
           </p>
         </div>
       </div>
 
       <div className="flex items-center gap-2">
         {user && (
-          <div className="hidden md:flex items-center gap-3 bg-white/40 px-4 py-2 rounded-2xl border border-white/50 shadow-sm backdrop-blur-sm mr-2">
+          <div className="hidden md:flex items-center gap-1 bg-white/40 px-2 py-1.5 rounded-2xl border border-white/50 shadow-sm backdrop-blur-sm mr-2">
             <button
               onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/${myBlogId}`, '_blank')}
-              className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${!myBlogId ? 'text-red-400 hover:text-red-500' : 'text-slate-500 hover:text-green-600'}`}
+              className={`p-2 rounded-lg transition-colors ${!myBlogId ? 'text-red-400 hover:bg-red-50 hover:text-red-500' : 'text-slate-500 hover:bg-green-50 hover:text-green-600'}`}
               title={myBlogId ? '내 블로그 열기' : '블로그 연동 필요'}
+              aria-label={myBlogId ? '내 블로그 열기' : '블로그 연동 필요'}
             >
-              <img src="https://blog.naver.com/favicon.ico" className="w-3.5 h-3.5 opacity-70" alt="N" />
-              <span className="hidden lg:inline">{myBlogId ? '블로그' : '연동필요'}</span>
+              <img src="https://blog.naver.com/favicon.ico" className="w-4 h-4 opacity-80" alt="Naver Blog" />
             </button>
-            <span className="text-slate-300 text-[10px]">|</span>
             <button
               onClick={() => !myInfluencerUrl ? openProfileModal() : window.open(myInfluencerUrl, '_blank')}
-              className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${!myInfluencerUrl ? 'text-red-400 hover:text-red-500' : 'text-slate-500 hover:text-purple-600'}`}
+              className={`p-2 rounded-lg transition-colors ${!myInfluencerUrl ? 'text-red-400 hover:bg-red-50 hover:text-red-500' : 'text-slate-500 hover:bg-purple-50 hover:text-purple-600'}`}
               title={myInfluencerUrl ? '인플루언서 홈 열기' : '인플루언서 연동 필요'}
+              aria-label={myInfluencerUrl ? '인플루언서 홈 열기' : '인플루언서 연동 필요'}
             >
-              <span>👑</span>
-              <span className="hidden lg:inline">{myInfluencerUrl ? '인플루언서' : '연동필요'}</span>
+              <span className="block text-base leading-none">👑</span>
             </button>
-            <span className="text-slate-300 text-[10px]">|</span>
             <button
               onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/PostWriteForm.naver?blogId=${myBlogId}`, '_blank')}
-              className={`flex items-center gap-1.5 text-xs font-bold hover:opacity-80 transition-colors ${themeStyles.accentText}`}
+              className={`p-2 rounded-lg transition-colors hover:bg-blue-50 ${themeStyles.accentText}`}
+              title={myBlogId ? '블로그 글쓰기' : '블로그 연동 필요'}
+              aria-label={myBlogId ? '블로그 글쓰기' : '블로그 연동 필요'}
             >
-              <PenLine className="w-3.5 h-3.5" />
-              <span className="hidden lg:inline">글쓰기</span>
+              <PenLine className="w-4 h-4" />
+            </button>
+            <button
+              onClick={openProfileModal}
+              className="p-2 rounded-lg transition-colors text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              title="내 정보 설정"
+              aria-label="내 정보 설정"
+            >
+              <UserCog className="w-4 h-4" />
             </button>
           </div>
         )}
@@ -121,10 +130,6 @@ export default function Header({
         {user ? (
           <>
             <div className="hidden md:flex items-center gap-3 bg-white/80 px-4 py-2 rounded-2xl border border-white/60 shadow-sm backdrop-blur-md">
-              <button onClick={openProfileModal} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full transition-all" title="내 정보 설정">
-                <UserCog className="w-4 h-4" />
-              </button>
-
               <div className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border tracking-wider ${
                   userGrade === 'admin' ? 'bg-slate-900 text-white border-slate-700' :
                   userGrade === 'pro' ? 'bg-blue-100 text-blue-600 border-blue-200' :
@@ -201,32 +206,59 @@ export default function Header({
                       </div>
                     </div>
 
-                    <div className="md:hidden p-2 grid grid-cols-2 gap-1 border-b border-slate-100 bg-white relative">
-                      <button onClick={openProfileModal} className="absolute top-2 right-2 p-1 text-slate-300 hover:text-slate-600 z-10"><UserCog className="w-4 h-4" /></button>
+                    <div className="md:hidden p-2 grid grid-cols-4 gap-2 border-b border-slate-100 bg-white">
+                      <button
+                        onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/${myBlogId}`, '_blank')}
+                        className={`flex items-center justify-center p-3 rounded-xl transition-colors ${!myBlogId ? 'text-red-400 hover:bg-red-50' : 'text-slate-600 hover:bg-slate-50'}`}
+                        title={myBlogId ? '내 블로그 열기' : '블로그 연동 필요'}
+                        aria-label={myBlogId ? '내 블로그 열기' : '블로그 연동 필요'}
+                      >
+                        <img src="https://blog.naver.com/favicon.ico" className="w-5 h-5 opacity-80" alt="blog" />
+                      </button>
 
-                      <div onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/${myBlogId}`, '_blank')} className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 gap-1 text-slate-600 cursor-pointer">
-                        <img src="https://blog.naver.com/favicon.ico" className="w-5 h-5 opacity-70" alt="blog" />
-                        <span className="text-xs font-bold">{myBlogId ? '내 블로그' : '블로그 연동'}</span>
-                        {!myBlogId && <span className="text-[9px] text-red-400">설정 필요</span>}
-                      </div>
+                      <button
+                        onClick={() => !myInfluencerUrl ? openProfileModal() : window.open(myInfluencerUrl, '_blank')}
+                        className={`flex items-center justify-center p-3 rounded-xl transition-colors ${!myInfluencerUrl ? 'text-red-400 hover:bg-red-50' : 'text-slate-600 hover:bg-slate-50'}`}
+                        title={myInfluencerUrl ? '인플루언서 홈 열기' : '인플루언서 연동 필요'}
+                        aria-label={myInfluencerUrl ? '인플루언서 홈 열기' : '인플루언서 연동 필요'}
+                      >
+                        <span className="text-lg leading-none">👑</span>
+                      </button>
 
-                      <div onClick={() => !myInfluencerUrl ? openProfileModal() : window.open(myInfluencerUrl, '_blank')} className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 gap-1 text-slate-600 cursor-pointer">
-                        <span className="text-lg">👑</span>
-                        <span className="text-xs font-bold">{myInfluencerUrl ? '인플루언서' : '인플루언서 연동'}</span>
-                        {!myInfluencerUrl && <span className="text-[9px] text-red-400">설정 필요</span>}
-                      </div>
-
-                      <div onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/PostWriteForm.naver?blogId=${myBlogId}`, '_blank')} className={`col-span-2 flex items-center justify-center gap-2 p-3 rounded-xl hover:bg-blue-50 ${themeStyles.accentText} font-bold bg-slate-50 cursor-pointer`}>
-                        <PenLine className="w-4 h-4" /><span className="text-xs">블로그 글쓰기 바로가기</span>
-                      </div>
+                      <button
+                        onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/PostWriteForm.naver?blogId=${myBlogId}`, '_blank')}
+                        className={`flex items-center justify-center p-3 rounded-xl transition-colors hover:bg-blue-50 ${themeStyles.accentText} bg-slate-50`}
+                        title={myBlogId ? '블로그 글쓰기' : '블로그 연동 필요'}
+                        aria-label={myBlogId ? '블로그 글쓰기' : '블로그 연동 필요'}
+                      >
+                        <PenLine className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={openProfileModal}
+                        className="flex items-center justify-center p-3 rounded-xl transition-colors text-slate-600 hover:bg-slate-50"
+                        title="내 정보 설정"
+                        aria-label="내 정보 설정"
+                      >
+                        <UserCog className="w-4 h-4" />
+                      </button>
                     </div>
 
                     <div className="px-4 py-3 bg-white">
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Settings</p>
-                      <button onClick={() => setIsTestMode(!isTestMode)} className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-slate-50 group">
-                        <span className={`text-sm font-bold ${isTestMode ? 'text-orange-500' : 'text-slate-600'}`}>{isTestMode ? '테스트 모드 (ON)' : '실전 모드 (OFF)'}</span>
-                        <div className={`w-9 h-5 rounded-full relative transition-colors ${isTestMode ? 'bg-orange-400' : 'bg-slate-200'}`}><div className={`w-3.5 h-3.5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${isTestMode ? 'left-5' : 'left-0.5'}`} /></div>
-                      </button>
+                      <div className="w-full rounded-xl bg-slate-100 p-1 grid grid-cols-2 gap-1">
+                        <button
+                          onClick={() => setMode('basic')}
+                          className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors ${isBasicMode ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                          ⚡ 일반 모드 (20V)
+                        </button>
+                        <button
+                          onClick={() => setMode('pro')}
+                          className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors ${!isBasicMode ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                          🚀 고성능 모드 (100V)
+                        </button>
+                      </div>
 
                       <div className="my-1 border-t border-slate-100" />
 
@@ -289,4 +321,5 @@ export default function Header({
     </div>
   );
 }
+
 

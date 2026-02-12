@@ -2,13 +2,22 @@ import axios from 'axios';
 
 // ✨ [변경 1] 'review' 테마가 추가되었습니다.
 export type ThemeType = 'restaurant' | 'travel' | 'fashion' | 'finance' | 'daily' | 'review';
+export type GenerateMode = 'basic' | 'pro';
+
+// basic 모드는 검색 API를 타지 않고, 내부 문맥만으로 작성합니다.
+export const buildBasicContext = (keyword: string, theme: ThemeType) =>
+  `[기본 문맥]
+키워드: ${keyword}
+테마: ${theme}
+모드: basic
+주의: 실시간 검색 없이 작성하는 초안 모드입니다.`;
 
 // 1. 통합 검색 (Perplexity API -> 내 서버 /api/search)
-export const searchInfo = async (keyword: string, isTestMode: boolean, theme: ThemeType) => {
+export const searchInfo = async (keyword: string, mode: GenerateMode, theme: ThemeType) => {
   
-  if (isTestMode) {
-    console.log(`💰 [절약 모드] '${keyword}' 검색 생략`);
-    return `[테스트 데이터] ${keyword}에 대한 가상 정보입니다. (테마: ${theme}) \n이 내용은 테스트용입니다.`;
+  if (mode === 'basic') {
+    console.log(`⚡ [일반 모드] '${keyword}' 검색 생략 (Gemini 단독 작성)`);
+    return buildBasicContext(keyword, theme);
   }
 
   try {

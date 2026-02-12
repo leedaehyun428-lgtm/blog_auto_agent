@@ -10,7 +10,7 @@ interface HistoryItem {
   content: string;
   date: string;
   theme: ThemeType;
-  isTestMode: boolean;
+  mode: 'basic' | 'pro';
 }
 
 interface PostRow {
@@ -25,13 +25,13 @@ interface PostRow {
 interface UseHistoryParams {
   user: User | null;
   selectedTheme: ThemeType;
-  isTestMode: boolean;
+  mode: 'basic' | 'pro';
   notify: (type: 'success' | 'error' | 'info', message: string) => void;
   requestConfirm: (options: { title: string; message: string; confirmText?: string; cancelText?: string; danger?: boolean }) => Promise<boolean>;
   setKeyword: (value: string) => void;
   setResult: (value: string) => void;
   setSelectedTheme: (value: ThemeType) => void;
-  setResultIsTestMode: (value: boolean) => void;
+  setResultMode: (value: 'basic' | 'pro') => void;
   setStep: (value: 'idle' | 'searching' | 'writing' | 'done') => void;
   setIsMobileView: (value: boolean) => void;
   setIsEditing: (value: boolean) => void;
@@ -40,13 +40,13 @@ interface UseHistoryParams {
 export function useHistory({
   user,
   selectedTheme,
-  isTestMode,
+  mode,
   notify,
   requestConfirm,
   setKeyword,
   setResult,
   setSelectedTheme,
-  setResultIsTestMode,
+  setResultMode,
   setStep,
   setIsMobileView,
   setIsEditing,
@@ -67,7 +67,7 @@ export function useHistory({
         content: item.content,
         date: new Date(item.created_at).toLocaleDateString(),
         theme: item.theme,
-        isTestMode: item.is_test_mode,
+        mode: item.is_test_mode ? 'basic' : 'pro',
       }));
       setHistory(formatted);
     }
@@ -80,7 +80,8 @@ export function useHistory({
       keyword: newKeyword,
       content: newContent,
       theme: selectedTheme,
-      is_test_mode: isTestMode,
+      // 기존 DB 컬럼 호환: basic=true, pro=false
+      is_test_mode: mode === 'basic',
     });
 
     if (error) {
@@ -89,7 +90,7 @@ export function useHistory({
       fetchHistory();
       notify('success', '기록이 저장되었습니다.');
     }
-  }, [fetchHistory, isTestMode, notify, selectedTheme, user]);
+  }, [fetchHistory, mode, notify, selectedTheme, user]);
 
   const clearHistory = useCallback(async () => {
     if (!user) return;
@@ -133,11 +134,11 @@ export function useHistory({
     setKeyword(item.keyword);
     setResult(item.content);
     setSelectedTheme(item.theme || 'restaurant');
-    setResultIsTestMode(item.isTestMode ?? true);
+    setResultMode(item.mode ?? 'basic');
     setStep('done');
     setIsMobileView(false);
     setIsEditing(false);
-  }, [setIsEditing, setIsMobileView, setKeyword, setResult, setResultIsTestMode, setSelectedTheme, setStep]);
+  }, [setIsEditing, setIsMobileView, setKeyword, setResult, setResultMode, setSelectedTheme, setStep]);
 
   const exportHistory = useCallback(() => {
     const jsonString = `data:text/json;chatset=utf-8,${encodeURIComponent(JSON.stringify(history))}`;

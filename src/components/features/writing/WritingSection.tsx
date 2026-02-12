@@ -20,7 +20,7 @@ import {
   MessageSquarePlus,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import type { ThemeType } from '../../../api';
+import type { ThemeType, GenerateMode } from '../../../api';
 interface ThemeStyles {
   ring: string;
   iconBg: string;
@@ -62,15 +62,15 @@ interface HistoryItem {
   content: string;
   date: string;
   theme: ThemeType;
-  isTestMode: boolean;
+  mode: GenerateMode;
 }
 
 interface WritingSectionProps {
   step: 'idle' | 'searching' | 'writing' | 'done';
   isLoading: boolean;
   isAnalyzing: boolean;
-  isTestMode: boolean;
-  resultIsTestMode: boolean;
+  mode: GenerateMode;
+  resultMode: GenerateMode;
   isMobileView: boolean;
   isEditing: boolean;
   keyword: string;
@@ -89,7 +89,7 @@ interface WritingSectionProps {
   selectedPromptId: string;
   setSelectedPromptId: (value: string) => void;
   prompts: PromptItem[];
-  defaultprompts: PromptItem[];
+  defaultPrompts: PromptItem[];
   guide: string;
   setGuide: (value: string) => void;
   handleDeletePrompt: () => void;
@@ -119,8 +119,8 @@ export default function WritingSection({
   step,
   isLoading,
   isAnalyzing,
-  isTestMode,
-  resultIsTestMode,
+  mode,
+  resultMode,
   isMobileView,
   isEditing,
   keyword,
@@ -164,6 +164,8 @@ export default function WritingSection({
   editableResult,
   setEditableResult,
 }: WritingSectionProps) {
+  const isBasicMode = mode === 'basic';
+  const isResultBasicMode = resultMode === 'basic';
   return (
                 <div className="p-4 md:p-8 flex-1 flex flex-col overflow-y-auto custom-scrollbar">
           
@@ -209,7 +211,7 @@ export default function WritingSection({
                   
                   {/* 검색창 영역 */}
                   <div className="relative flex-1 group w-full">
-                    <div className={`absolute inset-0 rounded-2xl bg-gradient-to-r ${isTestMode ? 'from-orange-300 to-yellow-400' : 'from-sky-300 to-blue-400'} blur opacity-20 group-hover:opacity-40 transition-opacity`}></div>
+                    <div className={`absolute inset-0 rounded-2xl bg-gradient-to-r ${isBasicMode ? 'from-orange-300 to-yellow-400' : 'from-sky-300 to-blue-400'} blur opacity-20 group-hover:opacity-40 transition-opacity`}></div>
                     <input 
                       type="text" 
                       value={keyword}
@@ -379,7 +381,7 @@ export default function WritingSection({
                      onClick={() => setUseGuide(!useGuide)}
                      className={`flex items-center gap-2 text-sm font-medium transition-colors ${useGuide ? themeStyles.accentText : 'text-slate-400 hover:text-slate-600'}`}
                    >
-                     <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${useGuide ? `${isTestMode ? 'bg-orange-500 border-orange-500' : 'bg-blue-500 border-blue-500'}` : 'bg-white border-slate-300'}`}>
+                     <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${useGuide ? `${isBasicMode ? 'bg-orange-500 border-orange-500' : 'bg-blue-500 border-blue-500'}` : 'bg-white border-slate-300'}`}>
                         {useGuide && <span className="text-white text-[10px]">✔</span>}
                      </div>
                      <MessageSquarePlus className="w-4 h-4" />
@@ -516,7 +518,7 @@ export default function WritingSection({
                         className={`relative pl-4 pr-2 py-2 bg-white/60 hover:bg-white border border-white/50 rounded-full text-sm text-slate-500 shadow-sm hover:shadow-md transition-all flex items-center gap-2 group hover:${themeStyles.border} cursor-pointer`}
                         onClick={() => loadFromHistory(item)} // 클릭하면 불러오기
                       >
-                        <span className={`w-1.5 h-1.5 rounded-full bg-slate-300 transition-colors group-hover:${item.isTestMode ? 'bg-orange-400' : 'bg-blue-400'}`}></span>
+                        <span className={`w-1.5 h-1.5 rounded-full bg-slate-300 transition-colors group-hover:${item.mode === 'basic' ? 'bg-orange-400' : 'bg-blue-400'}`}></span>
                         <span className={`group-hover:${themeStyles.accentText} mr-1`}>{item.keyword}</span>
                         
                         {/* ✨ [X] 삭제 버튼 추가 */}
@@ -550,7 +552,7 @@ export default function WritingSection({
                   <p className="text-slate-400 font-medium text-center leading-relaxed">
                     주제를 선택하고 키워드를 던져주세요.<br/>
                     <span className={`${themeStyles.accentText} font-semibold`}>제품 리뷰</span>부터 <span className={`${themeStyles.accentText} font-semibold`}>맛집 탐방</span>까지.<br/>
-                    {isTestMode ? '테스트 모드라 안심하고 쓰세요!' : '감성 가득한 글을 써드릴게요.'} ☁️
+                    {isBasicMode ? '일반 모드: 빠르게 초안을 만듭니다.' : '고성능 모드: 검색 기반으로 정교하게 작성합니다.'}
                   </p>
                 </motion.div>
               )}
@@ -562,9 +564,9 @@ export default function WritingSection({
                   className="absolute inset-0 flex flex-col items-center justify-center gap-8 pb-10"
                 >
                   <div className="relative">
-                    <div className={`w-20 h-20 border-4 border-slate-100 rounded-full animate-spin border-t-${isTestMode ? 'orange' : 'blue'}-400`} />
+                    <div className={`w-20 h-20 border-4 border-slate-100 rounded-full animate-spin border-t-${isBasicMode ? 'orange' : 'blue'}-400`} />
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className={`w-2 h-2 rounded-full animate-ping ${isTestMode ? 'bg-orange-400' : 'bg-blue-400'}`} />
+                      <div className={`w-2 h-2 rounded-full animate-ping ${isBasicMode ? 'bg-orange-400' : 'bg-blue-400'}`} />
                     </div>
                   </div>
                   <div className="text-center space-y-2">
@@ -585,7 +587,7 @@ export default function WritingSection({
                   className={`h-full flex flex-col bg-white rounded-3xl border border-white/60 shadow-lg overflow-hidden transition-all duration-500 ${isMobileView ? 'max-w-[375px] mx-auto border-4 border-slate-200' : ''}`}
                 >
                   {/* 결과 헤더 */}
-                  <div className={`px-4 md:px-6 py-4 border-b flex justify-between items-center transition-colors ${isTestMode ? 'bg-orange-50/50 border-orange-100' : 'bg-blue-50/50 border-blue-100'}`}>
+                  <div className={`px-4 md:px-6 py-4 border-b flex justify-between items-center transition-colors ${isBasicMode ? 'bg-orange-50/50 border-orange-100' : 'bg-blue-50/50 border-blue-100'}`}>
                     
                     <div className="flex items-center gap-2 overflow-hidden mr-2">
                         <button onClick={resetToHome} className={`p-2 -ml-2 text-slate-400 hover:bg-white/50 rounded-xl transition-all hover:${themeStyles.accentText} flex-shrink-0`} title="처음으로">
@@ -640,7 +642,7 @@ export default function WritingSection({
                       <textarea
                         value={editableResult}
                         onChange={(e) => setEditableResult(e.target.value)}
-                        className={`w-full h-full min-h-[400px] p-4 bg-white border-2 rounded-xl focus:outline-none resize-none font-mono text-sm leading-relaxed ${themeStyles.focusRing} ${isTestMode ? 'border-orange-200' : 'border-blue-200'}`}
+                        className={`w-full h-full min-h-[400px] p-4 bg-white border-2 rounded-xl focus:outline-none resize-none font-mono text-sm leading-relaxed ${themeStyles.focusRing} ${isBasicMode ? 'border-orange-200' : 'border-blue-200'}`}
                       />
                     ) : (
                       <div className={`prose prose-slate max-w-none 
@@ -648,7 +650,7 @@ export default function WritingSection({
                         prose-h1:text-2xl prose-h2:text-xl prose-h2:mt-8
                         prose-p:text-slate-600 prose-p:leading-8 
                         prose-strong:font-bold
-                        prose-li:text-slate-600 ${isTestMode ? 'prose-h2:text-orange-600 prose-strong:text-orange-500 prose-li:marker:text-orange-300' : 'prose-h2:text-blue-600 prose-strong:text-blue-500 prose-li:marker:text-blue-300'}`}>
+                        prose-li:text-slate-600 ${isBasicMode ? 'prose-h2:text-orange-600 prose-strong:text-orange-500 prose-li:marker:text-orange-300' : 'prose-h2:text-blue-600 prose-strong:text-blue-500 prose-li:marker:text-blue-300'}`}>
                         <ReactMarkdown>
                           {result.replace(/\\#/g, '#')}
                         </ReactMarkdown>
@@ -658,7 +660,7 @@ export default function WritingSection({
                     {/* 하단 정보 */}
                     <div className="mt-10 pt-6 border-t border-dashed border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-slate-400">
                         <div className="flex flex-col gap-1 text-center md:text-left">
-                          <span className="opacity-80">Briter AI가 작성한 초안입니다. ({resultIsTestMode ? '테스트 모드' : '실전 모드'})</span>
+                          <span className="opacity-80">Briter AI가 작성한 초안입니다. ({isResultBasicMode ? '일반 모드' : '고성능 모드'})</span>
                           <span className={`font-bold ${themeStyles.accentText} tracking-tight`}>
                             Copyright © Simsimpuri All Rights Reserved.
                           </span>
@@ -684,6 +686,7 @@ export default function WritingSection({
         </div>
   );
 }
+
 
 
 
