@@ -48,6 +48,7 @@ const AdminPage = lazy(() => import('./AdminPage'));
 const WritingSection = lazy(() => import('./components/features/writing/WritingSection'));
 const SPLASH_FADE_MS = 450;
 const NOTICE_HIDE_UNTIL_KEY = 'briter_notice_hide_until';
+const PENDING_ACTION_KEY = 'briter_pending_action';
 
 const THEMES: { id: ThemeType; label: string; icon: LucideIcon }[] = [
   { id: 'restaurant', label: '맛집/카페', icon: Utensils },
@@ -138,8 +139,7 @@ function App() {
   const [editBlogId, setEditBlogId] = useState('');
   const [editInfluencerUrl, setEditInfluencerUrl] = useState('');
 
-  // 모바일 로그인 오픈 여부
-  const [isMobileLoginOpen, setIsMobileLoginOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
   const [confirmState, setConfirmState] = useState<ConfirmState>({
     isOpen: false,
@@ -582,6 +582,16 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    const pendingAction = sessionStorage.getItem(PENDING_ACTION_KEY);
+    if (pendingAction !== 'generate') return;
+
+    sessionStorage.removeItem(PENDING_ACTION_KEY);
+    setIsAuthModalOpen(false);
+    void handleGenerateWithGuard();
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   // --------------- [핸들러 함수들 (Handlers)] ---------------
   const handleLogout = async () => {
@@ -626,7 +636,8 @@ function App() {
   };
   const handleGenerateWithGuard = async () => {
     if (!user) {
-      await handleGenerate();
+      sessionStorage.setItem(PENDING_ACTION_KEY, 'generate');
+      setIsAuthModalOpen(true);
       return;
     }
 
@@ -639,6 +650,24 @@ function App() {
     }
 
     await handleGenerate();
+  };
+
+  const closeAuthModal = () => {
+    setIsAuthModalOpen(false);
+    sessionStorage.removeItem(PENDING_ACTION_KEY);
+  };
+
+  const startProviderLogin = async (provider: 'google' | 'kakao') => {
+    try {
+      if (provider === 'google') {
+        await handleLogin();
+      } else {
+        await handleKakaoLogin();
+      }
+    } catch (error) {
+      console.error('로그인 시작 실패:', error);
+      notify('error', '로그인 창을 열지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    }
   };
 
   // 말투 저장
@@ -813,10 +842,7 @@ function App() {
           clearHistory={clearHistory}
           openNoticeModal={openNoticeModal}
           openGuideModal={() => setIsGuideModalOpen(true)}
-          handleLogin={handleLogin}
-          handleKakaoLogin={handleKakaoLogin}
-          isMobileLoginOpen={isMobileLoginOpen}
-          setIsMobileLoginOpen={setIsMobileLoginOpen}
+          openAuthModal={() => setIsAuthModalOpen(true)}
         />
 
         <Suspense
@@ -964,6 +990,44 @@ function App() {
         isOpen={isGuideModalOpen}
         onClose={() => setIsGuideModalOpen(false)}
       />
+
+      <Modal
+        isOpen={isAuthModalOpen}
+        onClose={closeAuthModal}
+        className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
+      >
+        <h3 className="text-lg font-bold text-slate-800">로그인이 필요합니다</h3>
+        <p className="mt-2 text-sm text-slate-500">
+          생성을 계속하려면 로그인 방식을 선택해 주세요.
+        </p>
+        <div className="mt-5 space-y-2">
+          <button
+            type="button"
+            onClick={() => startProviderLogin('google')}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="h-4 w-4" alt="G" />
+            구글 로그인
+          </button>
+          <button
+            type="button"
+            onClick={() => startProviderLogin('kakao')}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#FEE500] px-4 py-3 text-sm font-bold text-slate-900 hover:bg-[#FDD835]"
+          >
+            <img src="https://upload.wikimedia.org/wikipedia/commons/e/e3/KakaoTalk_logo.svg" className="h-4 w-4" alt="K" />
+            카카오 로그인
+          </button>
+        </div>
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={closeAuthModal}
+            className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100"
+          >
+            취소
+          </button>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={isInitialNoticeOpen}

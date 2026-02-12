@@ -581,16 +581,16 @@ export default function WritingSection({
               {/* 생성 기록 보관함 */}
               {history.length > 0 && !isLoading && (
                 <div className="animate-fade-in-up px-2">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex items-center gap-1.5 text-[10px] md:text-xs font-bold uppercase tracking-wider text-slate-400">
                       <Clock className="w-3 h-3" /> Generated Archive
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="shrink-0 flex items-center gap-1 md:gap-2">
                       <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
                         <button
                           type="button"
                           onClick={() => setHistoryView('recent')}
-                          className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                          className={`rounded-md px-2 py-1 text-[10px] md:text-[11px] font-bold transition-colors ${
                             historyView === 'recent' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-500'
                           }`}
                         >
@@ -599,7 +599,7 @@ export default function WritingSection({
                         <button
                           type="button"
                           onClick={() => setHistoryView('archive')}
-                          className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                          className={`rounded-md px-2 py-1 text-[10px] md:text-[11px] font-bold transition-colors ${
                             historyView === 'archive' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-500'
                           }`}
                         >
@@ -609,10 +609,11 @@ export default function WritingSection({
                       <button
                         type="button"
                         onClick={() => setIsArchiveOpen((prev) => !prev)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-500 shadow-sm hover:bg-slate-50"
+                        className="inline-flex items-center gap-0.5 md:gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] md:text-[11px] font-bold text-slate-500 shadow-sm hover:bg-slate-50"
+                        aria-label={isArchiveOpen ? '접기' : '펼치기'}
                       >
-                        {isArchiveOpen ? '접기' : '펼치기'}
-                        {isArchiveOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        <span className="hidden md:inline">{isArchiveOpen ? '접기' : '펼치기'}</span>
+                        {isArchiveOpen ? <ChevronUp className="w-3 h-3 md:w-3.5 md:h-3.5" /> : <ChevronDown className="w-3 h-3 md:w-3.5 md:h-3.5" />}
                       </button>
                     </div>
                   </div>

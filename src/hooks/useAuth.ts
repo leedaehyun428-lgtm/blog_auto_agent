@@ -30,18 +30,20 @@ export function useAuth(onAfterLogout?: () => void) {
     };
   }, []);
 
-  const handleLogin = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
+  const signInWithProvider = async (provider: 'google' | 'kakao') => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
       options: { redirectTo: window.location.origin },
     });
+    if (error) throw error;
+  };
+
+  const handleLogin = async () => {
+    await signInWithProvider('google');
   };
 
   const handleKakaoLogin = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'kakao',
-      options: { redirectTo: window.location.origin },
-    });
+    await signInWithProvider('kakao');
   };
 
   const handleLogout = async () => {
