@@ -1,3 +1,37 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer utilities {
+  @keyframes splash-logo-float {
+    0%,
+    100% {
+      transform: translateY(0) scale(1);
+      opacity: 0.9;
+    }
+    50% {
+      transform: translateY(-4px) scale(1.04);
+      opacity: 1;
+    }
+  }
+
+  @keyframes splash-text-glow {
+    0%,
+    100% {
+      opacity: 0.75;
+      letter-spacing: -0.01em;
+    }
+    50% {
+      opacity: 1;
+      letter-spacing: 0;
+    }
+  }
+
+  .animate-splash-logo {
+    animation: splash-logo-float 1.6s ease-in-out infinite;
+  }
+
+  .animate-splash-text {
+    animation: splash-text-glow 1.6s ease-in-out infinite;
+  }
+}

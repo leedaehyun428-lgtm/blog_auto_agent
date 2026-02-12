@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { X, Utensils, Plane, Shirt, Landmark, Smile, Package } from 'lucide-react';
+import { X, Utensils, Plane, Shirt, Landmark, Smile, Package, Sparkles } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { type ThemeType } from './api';
 import { supabase } from './supabaseClient';
@@ -35,6 +35,7 @@ interface ConfirmState {
 
 const AdminPage = lazy(() => import('./AdminPage'));
 const WritingSection = lazy(() => import('./components/features/writing/WritingSection'));
+const SPLASH_FADE_MS = 450;
 
 const THEMES: { id: ThemeType; label: string; icon: LucideIcon }[] = [
   { id: 'restaurant', label: '맛집/카페', icon: Utensils },
@@ -128,6 +129,9 @@ function App() {
     danger: false,
   });
   const confirmResolverRef = useRef<((result: boolean) => void) | null>(null);
+  const [isBootLoading, setIsBootLoading] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
+  const [isSplashVisible, setIsSplashVisible] = useState(true);
 
 
   // 테마 스타일 정의
@@ -257,13 +261,14 @@ function App() {
   // 메뉴 닫기 이벤트 핸들러
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      if (isProfileModalOpen) return;
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setIsMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isProfileModalOpen]);
 
   useEffect(() => {
     return () => {
@@ -337,28 +342,67 @@ function App() {
   
   // --------------- [초기화 및 인증 로직 (Auth & Init)] ---------------
   useEffect(() => {
-    const initializeUserData = async () => {
-      if (user) {
-        await supabase.from('profiles').update({
-          email: user.email,
-          user_name: user.user_metadata.full_name || user.email?.split('@')[0],
-        }).eq('id', user.id);
+    let isMounted = true;
 
-        fetchHistory();
-        checkAdmin(user.id);
-        fetchPrompts();
-        fetchUserData(user.id);
-      } else {
-        setHistory([]);
-        setPrompts([]);
-        setIsAdmin(false);
-        setVolts(0);
-        setUserGrade('basic');
+    const initializeUserData = async () => {
+      try {
+        if (isMounted) {
+          setIsBootLoading(true);
+        }
+
+        if (user) {
+          await supabase.from('profiles').update({
+            email: user.email,
+            user_name: user.user_metadata.full_name || user.email?.split('@')[0],
+          }).eq('id', user.id);
+
+          await Promise.all([
+            fetchHistory(),
+            checkAdmin(user.id),
+            fetchPrompts(),
+            fetchUserData(user.id),
+          ]);
+        } else {
+          setHistory([]);
+          setPrompts([]);
+          setIsAdmin(false);
+          setVolts(0);
+          setUserGrade('basic');
+        }
+      } finally {
+        if (isMounted) {
+          setIsBootLoading(false);
+        }
       }
     };
 
     initializeUserData();
+
+    return () => {
+      isMounted = false;
+    };
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loading = isAuthLoading || isBootLoading;
+
+  useEffect(() => {
+    let fadeTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    if (loading) {
+      setShowSplash(true);
+      setIsSplashVisible(true);
+      return undefined;
+    }
+
+    setIsSplashVisible(false);
+    fadeTimeout = setTimeout(() => {
+      setShowSplash(false);
+    }, SPLASH_FADE_MS);
+
+    return () => {
+      if (fadeTimeout) clearTimeout(fadeTimeout);
+    };
+  }, [loading]);
 
 
   // --------------- [핸들러 함수들 (Handlers)] ---------------
@@ -379,6 +423,9 @@ function App() {
     setEditBlogId(myBlogId);
     setEditInfluencerUrl(myInfluencerUrl);
     setIsProfileModalOpen(true);
+  };
+  const closeProfileModal = () => {
+    setIsProfileModalOpen(false);
   };
 
   // 말투 저장
@@ -483,16 +530,17 @@ function App() {
   const saveEditing = () => { setResult(editableResult); setIsEditing(false); };
   const cancelEditing = () => { setIsEditing(false); };
 
-  if (isAuthLoading) {
+  if (showSplash) {
     return (
-      <div className={`min-h-screen bg-gradient-to-br ${themeStyles.bg} flex items-center justify-center p-4 md:p-6`}>
-        <div className="max-w-4xl w-full bg-white/70 backdrop-blur-xl rounded-[2.5rem] shadow-2xl border border-white/50 min-h-[650px] p-6 md:p-8">
-          <div className="animate-pulse space-y-4">
-            <div className="h-10 w-44 rounded-xl bg-slate-200/80" />
-            <div className="h-24 w-full rounded-2xl bg-slate-200/70" />
-            <div className="h-44 w-full rounded-2xl bg-slate-200/70" />
-            <div className="h-44 w-full rounded-2xl bg-slate-200/70" />
-          </div>
+      <div
+        className={`fixed inset-0 z-[200] flex items-center justify-center bg-white transition-opacity ${
+          isSplashVisible ? 'opacity-100' : 'opacity-0'
+        }`}
+        style={{ transitionDuration: `${SPLASH_FADE_MS}ms` }}
+      >
+        <div className="flex flex-col items-center gap-4">
+          <Sparkles className="h-12 w-12 text-orange-500 animate-splash-logo" />
+          <p className="text-3xl font-bold tracking-tight text-slate-800 animate-splash-text">Briter AI</p>
         </div>
       </div>
     );
@@ -558,12 +606,10 @@ function App() {
 
         <Suspense
           fallback={
-            <div className="flex-1 p-6 md:p-8">
-              <div className="animate-pulse space-y-4">
-                <div className="h-12 w-full rounded-2xl bg-slate-200/70" />
-                <div className="h-12 w-2/3 rounded-2xl bg-slate-200/70" />
-                <div className="h-36 w-full rounded-2xl bg-slate-200/70" />
-                <div className="h-36 w-full rounded-2xl bg-slate-200/70" />
+            <div className="flex flex-1 items-center justify-center bg-white/70">
+              <div className="flex flex-col items-center gap-3">
+                <Sparkles className="h-8 w-8 text-orange-500 animate-splash-logo" />
+                <p className="text-lg font-semibold text-slate-700 animate-splash-text">Briter AI</p>
               </div>
             </div>
           }
@@ -661,7 +707,7 @@ function App() {
           {isProfileModalOpen && (
             <div className="fixed inset-0 bg-black/50 z-[80] flex items-center justify-center p-4">
               <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-fade-in-up relative">
-                <button onClick={() => setIsProfileModalOpen(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+                <button onClick={closeProfileModal} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
                 <h3 className="text-lg font-bold text-slate-800 mb-1">내 블로그 정보 설정</h3>
                 <p className="text-xs text-slate-400 mb-4">입력해두시면 바로가기 버튼이 자동으로 연결됩니다!</p>
                 
@@ -703,11 +749,4 @@ function App() {
     }
 
 export default App;
-
-
-
-
-
-
-
 
