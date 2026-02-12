@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { 
-  X, RefreshCw, Plus, Minus, Search, AlertCircle, CheckCircle, 
+  X, RefreshCw, Plus, Minus, AlertCircle, CheckCircle, 
   ShieldAlert, Zap, XCircle, ChevronLeft, ChevronRight 
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
@@ -18,11 +18,31 @@ interface Toast {
   type: 'success' | 'error';
 }
 
+interface ProfileRow {
+  id: string;
+  user_name?: string;
+  full_name?: string;
+  email?: string;
+  grade: string;
+  volts: number;
+  created_at: string;
+}
+
+interface LogRow {
+  id: number;
+  user_id: string;
+  keyword: string;
+  theme: string;
+  used_volts: number;
+  status: string;
+  error_message?: string;
+  created_at: string;
+}
+
 export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: AdminPageProps) {
   const [activeTab, setActiveTab] = useState<'users' | 'logs'>('users');
-  const [users, setUsers] = useState<any[]>([]);
-  const [logs, setLogs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [users, setUsers] = useState<ProfileRow[]>([]);
+  const [logs, setLogs] = useState<LogRow[]>([]);
   
   // ✨ Toast 상태 관리
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -34,10 +54,12 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
   // 로그 필터 상태
   const [logFilter, setLogFilter] = useState<'all' | 'use' | 'charge' | 'refund'>('all');
 
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     fetchUsers();
     fetchLogs();
-  }, [page]); // 페이지가 바뀔 때마다 로그 다시 가져옴
+  }, [page]);
+  /* eslint-enable react-hooks/exhaustive-deps */ // 페이지가 바뀔 때마다 로그 다시 가져옴
 
   // ✨ Toast 추가 함수 (3초 후 자동 삭제)
   const addToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -48,9 +70,7 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
     }, 3000);
   };
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    const { data: profiles, error } = await supabase
+  const fetchUsers = async () => {    const { data: profiles, error } = await supabase
       .from('profiles')
       .select('*')
       .order('created_at', { ascending: false });
@@ -60,9 +80,7 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
       addToast('유저 목록을 불러오지 못했습니다.', 'error');
     } else {
       setUsers(profiles || []);
-    }
-    setLoading(false);
-  };
+    }  };
 
   const fetchLogs = async () => {
     // ✨ 페이지네이션 적용: range(시작, 끝)
@@ -130,7 +148,7 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
         if (newLogs) setLogs(newLogs);
       }
 
-    } catch (error: any) {
+    } catch (error) {
       // 💥 실패 시: 아까 백업해둔 값으로 UI 롤백
       console.error("업데이트 실패:", error);
       setUsers(prevUsers); 
@@ -293,7 +311,7 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
                 <div className="flex w-full md:w-auto items-center gap-2">
                   <div className="flex p-1 bg-slate-200/60 rounded-xl overflow-x-auto hide-scrollbar flex-1 md:flex-none">
                     {[{ id: 'all', label: '전체' }, { id: 'use', label: '사용' }, { id: 'charge', label: '충전' }, { id: 'refund', label: '환불' }].map((tab) => (
-                      <button key={tab.id} onClick={() => setLogFilter(tab.id as any)} className={`px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${logFilter === tab.id ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{tab.label}</button>
+                      <button key={tab.id} onClick={() => setLogFilter(tab.id as 'all' | 'use' | 'charge' | 'refund')} className={`px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${logFilter === tab.id ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{tab.label}</button>
                     ))}
                   </div>
                   <button onClick={fetchLogs} className="p-2 bg-white border rounded-lg hover:bg-slate-50 shrink-0"><RefreshCw className="w-4 h-4" /></button>
@@ -396,3 +414,4 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
     </div>
   );
 }
+

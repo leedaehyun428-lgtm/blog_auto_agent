@@ -1,31 +1,42 @@
-import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Sparkles, Search, Copy, Clock, Trash2, CheckCircle, RotateCcw, Menu, X, 
-  Utensils, Plane, Shirt, Landmark, Smile, AlignLeft, Smartphone, Monitor, 
-  Download, Image as ImageIcon, PenLine, Save, XCircle, UploadCloud, DownloadCloud, 
-  Package, MessageSquarePlus, BarChart3, UserCog, LogOut, LogIn
-} from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import html2canvas from 'html2canvas';
-import { searchInfo, generateBlogPost, analyzeKeyword, type ThemeType } from './api';
+﻿import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { X, Utensils, Plane, Shirt, Landmark, Smile, Package } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { type ThemeType } from './api';
 import { supabase } from './supabaseClient';
-import AdminPage from './AdminPage';
+import Header from './components/layout/Header';
+import Modal from './components/common/Modal';
+import Toast, { type ToastType } from './components/common/Toast';
+import { useAuth } from './hooks/useAuth';
+import { useHistory } from './hooks/useHistory';
+import { useGeneration } from './hooks/useGeneration';
 
-// --- [상수 및 타입 정의] ---
-const MY_BLOG_ID = 'leedh428';
-const MY_INFLUENCER_URL = 'https://in.naver.com/simsimpuri';
-
-interface HistoryItem {
-  id: number;
-  keyword: string;
-  content: string;
-  date: string;
-  theme: ThemeType;
-  isTestMode: boolean;
+interface PromptItem {
+  id: string;
+  title: string;
+  system_prompt: string;
 }
 
-const THEMES: { id: ThemeType; label: string; icon: any }[] = [
+interface ConfirmOptions {
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  danger?: boolean;
+}
+
+interface ConfirmState {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  confirmText: string;
+  cancelText: string;
+  danger: boolean;
+}
+
+const AdminPage = lazy(() => import('./AdminPage'));
+const WritingSection = lazy(() => import('./components/features/writing/WritingSection'));
+
+const THEMES: { id: ThemeType; label: string; icon: LucideIcon }[] = [
   { id: 'restaurant', label: '맛집/카페', icon: Utensils },
   { id: 'travel', label: '여행/명소', icon: Plane },
   { id: 'review', label: '제품/리뷰', icon: Package },
@@ -34,7 +45,7 @@ const THEMES: { id: ThemeType; label: string; icon: any }[] = [
   { id: 'daily', label: '일상/생각', icon: Smile },
 ];
 
-const DEFAULT_PROMPTS = [
+const DEFAULT_PROMPTS: PromptItem[] = [
   { id: 'preset_1', title: '📢 [기본] 친근한 리뷰어', system_prompt: '너는 20대 후반의 친근하고 활발한 블로거야. 이모티콘을 적절히 섞어서("ㅎㅎ", "ㅠㅠ" 등) 생동감 있게 작성해줘. 독자에게 말을 걸듯이 해요체를 사용해.' },
   { id: 'preset_2', title: '🧐 [기본] 전문적인 분석가', system_prompt: '너는 IT/테크/금융 전문 에디터야. 신뢰감을 주는 "하십시오"체와 "해요"체를 섞어서 정중하게 작성해. 객관적인 사실과 숫자를 강조해서 글을 써줘.' },
   { id: 'preset_3', title: '✨ [기본] 감성 인스타그래머', system_prompt: '너는 감성적인 사진과 글을 즐기는 인스타그래머야. 문장은 짧고 간결하게, 여운을 남기는 말투로 작성해. #해시태그를 센스 있게 배치해줘.' },
@@ -42,8 +53,8 @@ const DEFAULT_PROMPTS = [
 
 function App() {
   // --- [상태 관리: State] ---
-  const [user, setUser] = useState<any>(null);
   const [keyword, setKeyword] = useState('');
+  const [keywordError, setKeywordError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState('');
   const [step, setStep] = useState<'idle' | 'searching' | 'writing' | 'done'>('idle');
@@ -75,7 +86,6 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 히스토리 및 기타 상태
-  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [copyStatus, setCopyStatus] = useState('idle');
 
   const [exposureGuide, setExposureGuide] = useState<{
@@ -91,7 +101,7 @@ function App() {
   const [userGrade, setUserGrade] = useState('basic');
 
   // 말투(Persona) 관련 상태
-  const [prompts, setPrompts] = useState<any[]>([]);
+  const [prompts, setPrompts] = useState<PromptItem[]>([]);
   const [selectedPromptId, setSelectedPromptId] = useState('');
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
   const [newPromptTitle, setNewPromptTitle] = useState('');
@@ -107,6 +117,16 @@ function App() {
 
   // 모바일 로그인 오픈 여부
   const [isMobileLoginOpen, setIsMobileLoginOpen] = useState(false);
+  const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
+  const [confirmState, setConfirmState] = useState<ConfirmState>({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: '확인',
+    cancelText: '취소',
+    danger: false,
+  });
+  const confirmResolverRef = useRef<((result: boolean) => void) | null>(null);
 
 
   // 테마 스타일 정의
@@ -136,6 +156,103 @@ function App() {
     selection: "selection:bg-blue-200"
   };
 
+  const notify = (type: ToastType, message: string) => {
+    setToast({ type, message });
+  };
+
+  const closeConfirm = (result: boolean) => {
+    setConfirmState((prev) => ({ ...prev, isOpen: false }));
+    if (confirmResolverRef.current) {
+      confirmResolverRef.current(result);
+      confirmResolverRef.current = null;
+    }
+  };
+
+  const requestConfirm = (options: ConfirmOptions) =>
+    new Promise<boolean>((resolve) => {
+      confirmResolverRef.current = resolve;
+      setConfirmState({
+        isOpen: true,
+        title: options.title,
+        message: options.message,
+        confirmText: options.confirmText ?? '확인',
+        cancelText: options.cancelText ?? '취소',
+        danger: options.danger ?? false,
+      });
+    });
+
+  const handleKeywordChange = (value: string) => {
+    setKeyword(value);
+    if (keywordError) setKeywordError('');
+  };
+
+  const {
+    user,
+    isAuthLoading,
+    handleLogin,
+    handleKakaoLogin,
+    handleLogout: authLogout,
+  } = useAuth();
+
+  const {
+    history,
+    setHistory,
+    fetchHistory,
+    saveToHistory,
+    clearHistory,
+    deleteHistoryItem,
+    loadFromHistory,
+    exportHistory,
+    importHistory,
+  } = useHistory({
+    user,
+    selectedTheme,
+    isTestMode,
+    notify,
+    requestConfirm,
+    setKeyword: handleKeywordChange,
+    setResult,
+    setSelectedTheme,
+    setResultIsTestMode,
+    setStep,
+    setIsMobileView,
+    setIsEditing,
+  });
+
+  const {
+    handleAnalyze,
+    handleGenerate,
+    resetToHome,
+  } = useGeneration({
+    user,
+    keyword,
+    setKeywordError,
+    isTestMode,
+    selectedTheme,
+    useGuide,
+    guide,
+    volts,
+    handleLogin,
+    requestConfirm,
+    saveToHistory,
+    setVolts,
+    setIsLoading,
+    setResult,
+    setCopyStatus,
+    setStep,
+    setResultIsTestMode,
+    setIsAnalyzing,
+    setAnalysisData,
+    setExposureGuide,
+    setKeyword: handleKeywordChange,
+    setIsMobileView,
+    setIsEditing,
+    setGuide,
+    setUseGuide,
+    setSelectedPromptId,
+    notify,
+  });
+
   // 메뉴 닫기 이벤트 핸들러
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -145,6 +262,15 @@ function App() {
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (confirmResolverRef.current) {
+        confirmResolverRef.current(false);
+        confirmResolverRef.current = null;
+      }
+    };
   }, []);
 
   // --------------- [데이터 가져오기 함수들 (Data Fetching)] ---------------
@@ -160,40 +286,19 @@ function App() {
     }
   };
 
-  // 2. 히스토리 가져오기
-  const fetchHistory = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('posts')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(10);
-
-    if (data) {
-      const formatted: HistoryItem[] = data.map((item: any) => ({
-        id: item.id,
-        keyword: item.keyword,
-        content: item.content,
-        date: new Date(item.created_at).toLocaleDateString(),
-        theme: item.theme as ThemeType,
-        isTestMode: item.is_test_mode
-      }));
-      setHistory(formatted);
-    }
-  };
-
-  // 3. 내 말투 목록 가져오기
-  const fetchPrompts = async (userId: string) => {
+  // 2. 내 말투 목록 가져오기
+  const fetchPrompts = async () => {
     const { data } = await supabase
       .from('user_prompts')
       .select('*')
       .order('created_at', { ascending: false });
     
-    if (data) setPrompts(data);
+    if (data) setPrompts(data as PromptItem[]);
   };
 
   // ✨ [수정됨] 내 볼트와 등급(Grade) 함께 가져오기
   const fetchUserData = async (userId: string) => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('profiles')
         .select('volts, grade, blog_id, influencer_url') // 👈 여기 추가
         .eq('id', userId)
@@ -220,258 +325,66 @@ function App() {
           .eq('id', user.id);
 
         if (error) {
-          alert("저장에 실패하였습니다.");
+          notify('error', '저장에 실패했습니다.');
         } else {
-          alert("내 정보가 저장되었습니다! 🎉");
+          notify('success', '내 정보가 저장되었습니다.');
           setMyBlogId(editBlogId);             // 성공하면 진짜 변수에 반영
           setMyInfluencerUrl(editInfluencerUrl);
           setIsProfileModalOpen(false);        // 창 닫기
         }
       };
   
-    // --------------- [초기화 및 인증 로직 (Auth & Init)] ---------------
-        useEffect(() => {
-          const initializeUser = async (sessionUser: any) => {
-            setUser(sessionUser ?? null);
-            if (sessionUser) {
-              // 1. ✨ 로그인 시 내 이메일/이름을 DB에 최신화 (명찰 달기)
-              await supabase.from('profiles').update({
-                  email: sessionUser.email,
-                  user_name: sessionUser.user_metadata.full_name || sessionUser.email?.split('@')[0]
-              }).eq('id', sessionUser.id);
+  // --------------- [초기화 및 인증 로직 (Auth & Init)] ---------------
+  useEffect(() => {
+    const initializeUserData = async () => {
+      if (user) {
+        await supabase.from('profiles').update({
+          email: user.email,
+          user_name: user.user_metadata.full_name || user.email?.split('@')[0],
+        }).eq('id', user.id);
 
-              // 2. 데이터 로드
-              fetchHistory(sessionUser.id);
-              checkAdmin(sessionUser.id);
-              fetchPrompts(sessionUser.id);
-              
-              // ✨ [여기가 수정됨] fetchVolts 대신 fetchUserData 호출!
-              fetchUserData(sessionUser.id); 
-            } else {
-              // 로그아웃 시 초기화
-              setHistory([]);
-              setPrompts([]);
-              setIsAdmin(false);
-              setVolts(0);
-              setUserGrade('basic'); // 등급도 초기화
-            }
-          };
+        fetchHistory();
+        checkAdmin(user.id);
+        fetchPrompts();
+        fetchUserData(user.id);
+      } else {
+        setHistory([]);
+        setPrompts([]);
+        setIsAdmin(false);
+        setVolts(0);
+        setUserGrade('basic');
+      }
+    };
 
-    // 1. 세션 확인
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      initializeUser(session?.user);
-    });
-
-    // 2. 로그인/로그아웃 감지
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      initializeUser(session?.user);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+    initializeUserData();
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   // --------------- [핸들러 함수들 (Handlers)] ---------------
-
-  const handleLogin = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin }
-    });
-  };
-
-  const handleKakaoLogin = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'kakao',
-      options: { redirectTo: window.location.origin }
-    });
-  };
-
   const handleLogout = async () => {
-      await supabase.auth.signOut();
-      
-      // ✨ 모든 상태값 초기화
-      setUser(null);
-      setVolts(0);
-      setUserGrade('basic');
-      setMyBlogId('');          // 내 블로그 ID 초기화
-      setMyInfluencerUrl('');   // 인플루언서 URL 초기화
-      setIsAdmin(false);        // 관리자 권한 해제
-      setHistory([]);           // 기록 삭제
-      
-      alert("로그아웃 되었습니다.");
-    };
+    await authLogout();
 
-  const saveToHistory = async (newKeyword: string, newContent: string) => {
-    if (!user) return;
-    const { error } = await supabase.from('posts').insert({
-      user_id: user.id,
-      keyword: newKeyword,
-      content: newContent,
-      theme: selectedTheme,
-      is_test_mode: isTestMode
-    });
-    if (error) {
-      alert("저장에 실패했습니다.");
-    } else {
-      fetchHistory(user.id);
-    }
-  };
+    setVolts(0);
+    setUserGrade('basic');
+    setMyBlogId('');
+    setMyInfluencerUrl('');
+    setIsAdmin(false);
+    setHistory([]);
 
-  const clearHistory = async () => {
-    if (!user) return;
-    if (confirm('서버에 저장된 모든 기록을 삭제하시겠습니까?')) {
-      const { error } = await supabase.from('posts').delete().eq('user_id', user.id);
-      if (error) alert("삭제 중 오류가 발생했습니다.");
-      else setHistory([]);
-    }
-  };
-
-  const deleteHistoryItem = async (e: React.MouseEvent, itemId: number) => {
-    e.stopPropagation();
-    if (!confirm("이 기록을 삭제하시겠습니까?")) return;
-    const { error } = await supabase.from('posts').delete().eq('id', itemId);
-    if (error) alert("삭제 실패");
-    else if(user) fetchHistory(user.id);
-  };
-
-  const handleAnalyze = async () => {
-    if (!user) {
-      if (confirm("로그인이 필요한 서비스입니다.\n로그인하고 무료로 분석해볼까요?")) handleLogin();
-      return;
-    }
-    if (!keyword.trim()) return alert("키워드를 입력해주세요!");
-
-    setIsAnalyzing(true);
-    setAnalysisData(null);
-    setExposureGuide(null);
-
-    try {
-      // 1. 키워드 분석 (네이버 광고 API 등)
-      const keywordData = await analyzeKeyword(keyword);
-      setAnalysisData(keywordData);
-
-      // 2. 상위 노출 분석 (우리 백엔드 API)
-      const response = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword })
-      });
-      const guideData = await response.json();
-      
-      setExposureGuide({
-        charCount: guideData.averageCharCount,
-        imgCount: guideData.averageImageCount,
-        keywordCount: guideData.keywordCount
-      });
-    } catch (error) {
-      alert("분석에 실패했습니다.");
-    } finally {
-      setIsAnalyzing(false);
-    }
+    notify('info', '로그아웃 되었습니다.');
   };
 
   const openProfileModal = () => {
-  setEditBlogId(myBlogId);             // 기존 값 -> 임시 변수로 복사
-  setEditInfluencerUrl(myInfluencerUrl); 
-  setIsProfileModalOpen(true);         // 모달 열기
-  };
-
-  // ⚡ [최종 수정] 결제 + 생성 + 자동환불 로직 통합
-  const handleGenerate = async () => {
-    // 1. 비로그인 차단
-    if (!user) {
-      if (confirm("로그인이 필요한 서비스입니다.\n로그인하고 서비스를 이용해볼까요?"))
-        handleLogin();
-      return;
-    }
-
-    // 2. 입력값 체크
-    if (!keyword.trim()) return alert("키워드를 입력해주세요!");
-
-    // 3. 결제 동의 (추후 '다시 보지 않기' 추가 가능)
-    if (!confirm(`⚡ 10 볼트가 차감됩니다.\n(현재 잔액: ${volts} V)\n\n진행하시겠습니까?`)) return;
-
-    setIsLoading(true);
-    setResult('');
-    setCopyStatus('idle');
-
-    try {
-      // 4. 💸 [결제 시도] Supabase 보안 함수 호출 (RPC)
-      const { data: isSuccess, error: payError } = await supabase
-        .rpc('deduct_volts', { row_id: user.id, amount: 10 });
-
-      // 잔액 부족 or 에러 시 중단
-      if (payError || !isSuccess) {
-        throw new Error("볼트가 부족하거나 결제 중 오류가 발생했습니다. 충전이 필요할 수 있습니다.");
-      }
-
-      // UI 즉시 반영 (낙관적 업데이트)
-      setVolts(prev => prev - 10);
-
-      // 5. 글 생성 시작
-      setStep('searching');
-      const searchData = await searchInfo(keyword, isTestMode, selectedTheme);
-      
-      setStep('writing');
-      const blogPost = await generateBlogPost(
-        keyword, 
-        searchData, 
-        selectedTheme, 
-        useGuide ? guide : undefined
-      );
-      
-      // 6. 성공 처리
-      setResult(blogPost);
-      setResultIsTestMode(isTestMode);
-      setStep('done');
-      saveToHistory(keyword, blogPost);
-
-      // ✅ 성공 로그 저장
-      await supabase.from('generation_logs').insert({
-        user_id: user.id,
-        keyword: keyword,
-        theme: selectedTheme,
-        used_volts: 10,
-        status: 'success'
-      });
-
-    } catch (error: any) {
-      console.error(error);
-      
-      // 7. 🚑 [자동 환불] 에러 발생 시 볼트 복구
-      if (error.message !== "볼트가 부족하거나 결제 중 오류가 발생했습니다. 충전이 필요할 수 있습니다.") {
-        await supabase.rpc('refund_volts', { row_id: user.id, amount: 10 });
-        setVolts(prev => prev + 10); // UI 복구
-        
-        alert(`오류가 발생하여 차감된 10 볼트가 자동 환불되었습니다.\n\n사유: ${error.message}`);
-
-        const detailedError = error.response?.data?.error?.message || error.message || "서버 응답 없음";
-        
-        // ❌ 실패 로그 저장
-        await supabase.from('generation_logs').insert({
-            user_id: user.id,
-            keyword: keyword,
-            status: 'refunded',
-            error_message: detailedError // ✨ 단순 문구 대신 '진짜 에러 내용' 저장
-          });
-          
-          alert(`오류 발생: ${detailedError}`); // 사용자에게도 구체적으로 알림
-      } else {
-        alert(error.message); // 잔액 부족 메시지
-      }
-
-      setStep('idle');
-    } finally {
-      setIsLoading(false);
-    }
+    setEditBlogId(myBlogId);
+    setEditInfluencerUrl(myInfluencerUrl);
+    setIsProfileModalOpen(true);
   };
 
   // 말투 저장
   const handleSavePrompt = async () => {
-    if (!user) return alert("로그인이 필요합니다.");
-    if (!guide.trim()) return alert("저장할 내용이 없습니다.");
-    if (!newPromptTitle.trim()) return alert("말투의 별명을 입력해주세요.");
+    if (!user) return notify('error', '로그인이 필요합니다.');
+    if (!guide.trim()) return notify('error', '저장할 내용이 없습니다.');
+    if (!newPromptTitle.trim()) return notify('error', '말투의 별명을 입력해주세요.');
 
     const { error } = await supabase.from('user_prompts').insert({
       user_id: user.id,
@@ -480,43 +393,31 @@ function App() {
     });
 
     if (error) {
-      alert("저장 실패 ㅠㅠ");
+      notify('error', '저장에 실패했습니다.');
     } else {
-      alert("저장되었습니다!");
+      notify('success', '저장되었습니다.');
       setNewPromptTitle('');
       setIsPromptModalOpen(false);
-      fetchPrompts(user.id);
-    }
-  };
-
-  // 말투 선택 (프리셋 + 내 말투)
-  const handleSelectPrompt = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const promptId = e.target.value;
-    setSelectedPromptId(promptId);
-    
-    if (promptId === '') {
-      setGuide('');
-      return;
-    }
-
-    let selected = prompts.find(p => p.id === promptId);
-    if (!selected) selected = DEFAULT_PROMPTS.find(p => p.id === promptId);
-
-    if (selected) {
-      setGuide(selected.system_prompt);
-      setUseGuide(true);
+      fetchPrompts();
     }
   };
 
   // 말투 삭제
   const handleDeletePrompt = async () => {
-    if (!selectedPromptId) return alert("삭제할 말투를 선택해주세요.");
+    if (!selectedPromptId) return notify('error', '삭제할 말투를 선택해주세요.');
     
     if (DEFAULT_PROMPTS.find(p => p.id === selectedPromptId)) {
-      return alert("기본 프리셋은 삭제할 수 없습니다.");
+      return notify('error', '기본 프리셋은 삭제할 수 없습니다.');
     }
 
-    if (!confirm("정말 이 말투를 삭제하시겠습니까?")) return;
+    const shouldDelete = await requestConfirm({
+      title: '말투 삭제',
+      message: '정말 이 말투를 삭제하시겠습니까?',
+      confirmText: '삭제',
+      cancelText: '취소',
+      danger: true,
+    });
+    if (!shouldDelete) return;
 
     const { error } = await supabase
       .from('user_prompts')
@@ -524,35 +425,13 @@ function App() {
       .eq('id', selectedPromptId);
 
     if (error) {
-      alert("삭제 실패");
+      notify('error', '삭제에 실패했습니다.');
     } else {
-      alert("삭제되었습니다.");
+      notify('success', '삭제되었습니다.');
       setSelectedPromptId('');
       setGuide('');
-      if(user) fetchPrompts(user.id);
+      if(user) fetchPrompts();
     }
-  };
-
-  const loadFromHistory = (item: HistoryItem) => {
-    setKeyword(item.keyword);
-    setResult(item.content);
-    setSelectedTheme(item.theme || 'restaurant');
-    setResultIsTestMode(item.isTestMode ?? true); 
-    setStep('done');
-    setIsMobileView(false);
-    setIsEditing(false);
-  };
-
-  const resetToHome = () => {
-    setStep('idle');
-    setKeyword('');
-    setResult('');
-    setAnalysisData(null);
-    setIsMobileView(false);
-    setIsEditing(false);
-    setGuide('');
-    setUseGuide(false);
-    setSelectedPromptId('');
   };
 
   const handleDownloadFile = () => {
@@ -568,18 +447,19 @@ function App() {
   const handleDownloadThumbnail = async () => {
     if (!thumbnailRef.current) return;
     try {
+      const { default: html2canvas } = await import('html2canvas');
       const canvas = await html2canvas(thumbnailRef.current, { scale: 2, backgroundColor: null, logging: false });
       const link = document.createElement('a');
       link.download = `${keyword}_썸네일.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
-    } catch (err) { alert("이미지 생성 실패"); }
+    } catch { notify('error', '이미지 생성 실패'); }
   };
 
   const handleCopyCleanText = async () => {
     if (!result) return;
     try {
-      let cleanText = result
+      const cleanText = result
         .replace(/^#+\s+/gm, '')
         .replace(/\*\*(.*?)\*\*/g, '$1')
         .replace(/\*(.*?)\*/g, '$1')
@@ -595,38 +475,27 @@ function App() {
       await navigator.clipboard.writeText(cleanText);
       setCopyStatus('copied');
       setTimeout(() => setCopyStatus('idle'), 2000);
-    } catch (err) { alert('복사 실패'); }
+    } catch { notify('error', '복사 실패'); }
   };
 
   const startEditing = () => { setEditableResult(result); setIsEditing(true); };
   const saveEditing = () => { setResult(editableResult); setIsEditing(false); };
   const cancelEditing = () => { setIsEditing(false); };
-  
-  const exportHistory = () => {
-    const jsonString = `data:text/json;chatset=utf-8,${encodeURIComponent(JSON.stringify(history))}`;
-    const link = document.createElement("a");
-    link.href = jsonString;
-    link.download = `briter_ai_backup_${new Date().toLocaleDateString()}.json`;
-    link.click();
-  };
-  
-  const importHistory = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const fileReader = new FileReader();
-    if (event.target.files && event.target.files.length > 0) {
-        fileReader.readAsText(event.target.files[0], "UTF-8");
-        fileReader.onload = (e) => {
-            if (e.target?.result) {
-                try {
-                    const parsedData = JSON.parse(e.target.result as string);
-                    if (Array.isArray(parsedData)) {
-                        setHistory(parsedData);
-                        alert("복원 완료! (DB 저장은 안 됨)");
-                    }
-                } catch (error) { alert("파일 오류"); }
-            }
-        };
-    }
-  };
+
+  if (isAuthLoading) {
+    return (
+      <div className={`min-h-screen bg-gradient-to-br ${themeStyles.bg} flex items-center justify-center p-4 md:p-6`}>
+        <div className="max-w-4xl w-full bg-white/70 backdrop-blur-xl rounded-[2.5rem] shadow-2xl border border-white/50 min-h-[650px] p-6 md:p-8">
+          <div className="animate-pulse space-y-4">
+            <div className="h-10 w-44 rounded-xl bg-slate-200/80" />
+            <div className="h-24 w-full rounded-2xl bg-slate-200/70" />
+            <div className="h-44 w-full rounded-2xl bg-slate-200/70" />
+            <div className="h-44 w-full rounded-2xl bg-slate-200/70" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen bg-gradient-to-br ${themeStyles.bg} flex items-center justify-center p-4 md:p-6 text-slate-700 font-sans transition-colors duration-700 ${themeStyles.selection}`}>
@@ -659,757 +528,133 @@ function App() {
       </div>
 
       <div className={`max-w-4xl w-full bg-white/70 backdrop-blur-xl rounded-[2.5rem] shadow-2xl border ${themeStyles.containerBorder} min-h-[650px] flex flex-col overflow-hidden relative transition-all duration-500`}>
-        
-        {/* Header 영역 - 모바일/PC 통합 대응 */}
-        <div className="px-4 md:px-8 py-4 md:py-6 flex items-center justify-between z-20 relative">
-          
-          {/* 1. 좌측 로고 영역 */}
-          <div className="flex items-center gap-2 cursor-pointer group" onClick={resetToHome}>
-            <div className={`w-9 h-9 md:w-10 md:h-10 rounded-2xl flex items-center justify-center text-white shadow-lg transition-transform ${themeStyles.button}`}>
-              <Sparkles className="w-5 h-5" fill="currentColor" />
+        <Header
+          user={user}
+          isTestMode={isTestMode}
+          themeStyles={themeStyles}
+          resetToHome={resetToHome}
+          myBlogId={myBlogId}
+          myInfluencerUrl={myInfluencerUrl}
+          openProfileModal={openProfileModal}
+          userGrade={userGrade}
+          volts={volts}
+          handleLogout={handleLogout}
+          isMenuOpen={isMenuOpen}
+          setIsMenuOpen={setIsMenuOpen}
+          menuRef={menuRef}
+          isAdmin={isAdmin}
+          setShowAdmin={setShowAdmin}
+          setIsTestMode={setIsTestMode}
+          exportHistory={exportHistory}
+          fileInputRef={fileInputRef}
+          importHistory={importHistory}
+          clearHistory={clearHistory}
+          handleLogin={handleLogin}
+          handleKakaoLogin={handleKakaoLogin}
+          isMobileLoginOpen={isMobileLoginOpen}
+          setIsMobileLoginOpen={setIsMobileLoginOpen}
+        />
+
+        <Suspense
+          fallback={
+            <div className="flex-1 p-6 md:p-8">
+              <div className="animate-pulse space-y-4">
+                <div className="h-12 w-full rounded-2xl bg-slate-200/70" />
+                <div className="h-12 w-2/3 rounded-2xl bg-slate-200/70" />
+                <div className="h-36 w-full rounded-2xl bg-slate-200/70" />
+                <div className="h-36 w-full rounded-2xl bg-slate-200/70" />
+              </div>
             </div>
-            <div>
-              <h1 className="text-lg md:text-xl font-extrabold text-slate-800 tracking-tight">Briter AI</h1>
-              <p className={`text-[9px] md:text-[10px] font-bold tracking-widest uppercase ${themeStyles.subText}`}>
-                {isTestMode ? 'Test Mode On' : 'AI Writing Assistant'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            
-            {/* 2. [PC 전용] 링크 박스 (로그인 유저만 보임) */}
-            {user && (
-              <div className="hidden md:flex items-center gap-3 bg-white/40 px-4 py-2 rounded-2xl border border-white/50 shadow-sm backdrop-blur-sm mr-2">
-                {/* 내 블로그 */}
-                <button 
-                  onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/${myBlogId}`, '_blank')}
-                  className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${!myBlogId ? 'text-red-400 hover:text-red-500' : 'text-slate-500 hover:text-green-600'}`}
-                  title={myBlogId ? '내 블로그 열기' : '블로그 연동 필요'}
-                >
-                  <img src="https://blog.naver.com/favicon.ico" className="w-3.5 h-3.5 opacity-70" alt="N" />
-                  <span className="hidden lg:inline">{myBlogId ? '블로그' : '연동필요'}</span>
-                </button>
-                <span className="text-slate-300 text-[10px]">|</span>
-                {/* 인플루언서 */}
-                <button 
-                  onClick={() => !myInfluencerUrl ? openProfileModal() : window.open(myInfluencerUrl, '_blank')}
-                  className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${!myInfluencerUrl ? 'text-red-400 hover:text-red-500' : 'text-slate-500 hover:text-purple-600'}`}
-                  title={myInfluencerUrl ? '인플루언서 홈 열기' : '인플루언서 연동 필요'}
-                >
-                  <span>👑</span>
-                  <span className="hidden lg:inline">{myInfluencerUrl ? '인플루언서' : '연동필요'}</span>
-                </button>
-                <span className="text-slate-300 text-[10px]">|</span>
-                {/* 글쓰기 */}
-                <button 
-                  onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/PostWriteForm.naver?blogId=${myBlogId}`, '_blank')}
-                  className={`flex items-center gap-1.5 text-xs font-bold hover:opacity-80 transition-colors ${themeStyles.accentText}`}
-                >
-                  <PenLine className="w-3.5 h-3.5" />
-                  <span className="hidden lg:inline">글쓰기</span>
-                </button>
-              </div>
-            )}
-
-            {/* 3. 우측: 유저 정보 OR 로그인 버튼 */}
-            {user ? (
-              <>
-                {/* (A) 로그인 상태: [PC용] 유저 정보 박스 */}
-                <div className="hidden md:flex items-center gap-3 bg-white/80 px-4 py-2 rounded-2xl border border-white/60 shadow-sm backdrop-blur-md">
-                  <button onClick={openProfileModal} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full transition-all" title="내 정보 설정">
-                    <UserCog className="w-4 h-4" />
-                  </button>
-
-                  <div className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border tracking-wider ${
-                      userGrade === 'admin' ? 'bg-slate-900 text-white border-slate-700' :
-                      userGrade === 'pro' ? 'bg-blue-100 text-blue-600 border-blue-200' :
-                      'bg-green-100 text-green-600 border-green-200'
-                  }`}>
-                    {userGrade === 'admin' ? 'ADMIN' : userGrade === 'pro' ? 'PRO' : 'BASIC'}
-                  </div>
-
-                  <div className="flex items-center gap-1 px-2 py-0.5 bg-yellow-50 text-yellow-700 rounded-md text-xs font-bold border border-yellow-200 cursor-help" title="잔액 충전하기 (준비중)">
-                    <span>⚡</span><span>{volts.toLocaleString()}</span>
-                  </div>
-
-                  <div className="flex items-center gap-2 pl-2 border-l border-slate-200 ml-1">
-                    {user.user_metadata.avatar_url ? (
-                      <img src={user.user_metadata.avatar_url} alt="Profile" referrerPolicy="no-referrer" className="w-6 h-6 rounded-full border border-slate-200 shadow-sm" />
-                    ) : (
-                      <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs text-indigo-500 font-bold">{user.email?.[0].toUpperCase()}</div>
-                    )}
-                    <span className="text-xs font-bold text-slate-700 max-w-[80px] truncate">{user.user_metadata.full_name || '유저'}님</span>
-                    <button onClick={handleLogout} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors" title="로그아웃">
-                      <LogOut className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* (B) 로그인 상태: [공통] 햄버거 메뉴 버튼 & 드롭다운 */}
-                <div className="relative" ref={menuRef}>
-                  <button 
-                    onClick={() => setIsMenuOpen(!isMenuOpen)}
-                    className={`p-2.5 bg-white border border-white/60 shadow-sm text-slate-500 hover:${themeStyles.accentText} rounded-full transition-all active:scale-95`}
-                  >
-                    {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-                  </button>
-
-                  {/* 드롭다운 메뉴 */}
-                  <AnimatePresence>
-                    {isMenuOpen && (
-                      <motion.div 
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }} 
-                        animate={{ opacity: 1, y: 0, scale: 1 }} 
-                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        className="absolute right-0 top-full mt-3 w-72 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-white/50 z-50 overflow-hidden ring-1 ring-slate-900/5 origin-top-right"
-                      >
-                        {isAdmin && (
-                          <button onClick={() => setShowAdmin(true)} className="w-full flex items-center justify-center gap-2 px-4 py-3 mt-2 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 shadow-lg">
-                            <UserCog className="w-4 h-4" /> 관리자 페이지 열기
-                          </button>
-                        )}
-                        
-                        {/* 모바일용 프로필 영역 */}
-                        <div className="md:hidden px-5 py-4 bg-slate-50/80 border-b border-slate-100">
-                          <div className="flex flex-col gap-3">
-                            <div className="flex items-center gap-3">
-                              {user.user_metadata.avatar_url ? (
-                                <img src={user.user_metadata.avatar_url} referrerPolicy="no-referrer" className="w-10 h-10 rounded-full border border-white shadow-sm" />
-                              ) : (
-                                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 font-bold text-lg">{user.email?.[0].toUpperCase()}</div>
-                              )}
-                              <div className="flex flex-col">
-                                <span className="text-sm font-bold text-slate-800">{user.user_metadata.full_name || user.email?.split('@')[0]}님</span>
-                                <span className="text-[10px] text-slate-400">{user.email}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 p-2 bg-white rounded-xl border border-slate-100 shadow-sm">
-                              <div className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase border tracking-wider text-center ${
-                                userGrade === 'admin' ? 'bg-slate-800 text-white border-slate-700' :
-                                userGrade === 'pro' ? 'bg-purple-100 text-purple-700 border-purple-200' :
-                                'bg-slate-100 text-slate-500 border-slate-200'
-                              }`}>
-                                {userGrade === 'admin' ? 'ADMIN' : userGrade === 'pro' ? 'PRO' : 'FREE'}
-                              </div>
-                              <div className="flex-1 flex items-center justify-between px-3 py-1 bg-yellow-50 text-yellow-700 rounded-lg text-xs font-bold border border-yellow-100">
-                                <span>⚡ 보유 볼트</span><span>{volts.toLocaleString()} V</span>
-                              </div>
-                            </div>
-                            <button onClick={handleLogout} className="w-full py-2 text-xs font-bold bg-white border border-slate-200 rounded-lg text-slate-600 shadow-sm hover:bg-slate-50">로그아웃</button>
-                          </div>
-                        </div>
-
-                        {/* 모바일용 링크들 */}
-                        <div className="md:hidden p-2 grid grid-cols-2 gap-1 border-b border-slate-100 bg-white relative">
-                          <button onClick={openProfileModal} className="absolute top-2 right-2 p-1 text-slate-300 hover:text-slate-600 z-10"><UserCog className="w-4 h-4" /></button>
-                          
-                          <div onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/${myBlogId}`, '_blank')} className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 gap-1 text-slate-600 cursor-pointer">
-                            <img src="https://blog.naver.com/favicon.ico" className="w-5 h-5 opacity-70" alt="blog" />
-                            <span className="text-xs font-bold">{myBlogId ? '내 블로그' : '블로그 연동'}</span>
-                            {!myBlogId && <span className="text-[9px] text-red-400">설정 필요</span>}
-                          </div>
-                          
-                          <div onClick={() => !myInfluencerUrl ? openProfileModal() : window.open(myInfluencerUrl, '_blank')} className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-slate-50 gap-1 text-slate-600 cursor-pointer">
-                            <span className="text-lg">👑</span>
-                            <span className="text-xs font-bold">{myInfluencerUrl ? '인플루언서' : '인플루언서 연동'}</span>
-                            {!myInfluencerUrl && <span className="text-[9px] text-red-400">설정 필요</span>}
-                          </div>
-
-                          <div onClick={() => !myBlogId ? openProfileModal() : window.open(`https://blog.naver.com/PostWriteForm.naver?blogId=${myBlogId}`, '_blank')} className={`col-span-2 flex items-center justify-center gap-2 p-3 rounded-xl hover:bg-blue-50 ${themeStyles.accentText} font-bold bg-slate-50 cursor-pointer`}>
-                            <PenLine className="w-4 h-4" /><span className="text-xs">블로그 글쓰기 바로가기</span>
-                          </div>
-                        </div>
-
-                        {/* 공통 설정 메뉴 */}
-                        <div className="px-4 py-3 bg-white">
-                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Settings</p>
-                          <button onClick={() => setIsTestMode(!isTestMode)} className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-slate-50 group">
-                            <span className={`text-sm font-bold ${isTestMode ? 'text-orange-500' : 'text-slate-600'}`}>{isTestMode ? '테스트 모드 (ON)' : '실전 모드 (OFF)'}</span>
-                            <div className={`w-9 h-5 rounded-full relative transition-colors ${isTestMode ? 'bg-orange-400' : 'bg-slate-200'}`}><div className={`w-3.5 h-3.5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${isTestMode ? 'left-5' : 'left-0.5'}`} /></div>
-                          </button>
-                          
-                          <div className="my-1 border-t border-slate-100" />
-                          
-                          <button onClick={exportHistory} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 text-sm text-slate-600"><DownloadCloud className="w-4 h-4 text-slate-400" /> 기록 백업하기</button>
-                          <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 text-sm text-slate-600"><UploadCloud className="w-4 h-4 text-slate-400" /> 기록 복원하기</button>
-                          <input type="file" ref={fileInputRef} onChange={importHistory} className="hidden" accept=".json" />
-                          
-                          <div className="my-1 border-t border-slate-100" />
-                          
-                          <button onClick={clearHistory} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 text-red-500 text-sm"><Trash2 className="w-4 h-4" /> 기록 전체 삭제</button>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </>
-            ) : (
-              /* (C) 비로그인 상태: 로그인 버튼들 */
-              <div className="flex items-center gap-2">
-                {/* [PC] 텍스트 버튼 (모바일 숨김) */}
-                <div className="hidden md:flex items-center gap-2">
-                  <button onClick={handleLogin} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-sm">
-                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-3.5 h-3.5" alt="G" /> 구글
-                  </button>
-                  <button onClick={handleKakaoLogin} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FEE500] text-xs font-bold text-slate-900 hover:bg-[#FDD835] transition-all shadow-sm">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/e/e3/KakaoTalk_logo.svg" className="w-3 h-3" alt="K" /> 카카오
-                  </button>
-                </div>
-
-                {/* [모바일] 아이콘 버튼 & 드롭다운 선택 메뉴 ✨ */}
-                <div className="relative md:hidden">
-                  <button 
-                    onClick={() => setIsMobileLoginOpen(!isMobileLoginOpen)} 
-                    className="p-2.5 bg-white border border-slate-200 text-slate-500 rounded-full shadow-sm active:scale-95 transition-all"
-                    title="로그인하기"
-                  >
-                    {isMobileLoginOpen ? <X className="w-5 h-5" /> : <LogIn className="w-5 h-5" />}
-                  </button>
-
-                  {/* 모바일 로그인 선택 팝업 (말풍선) */}
-                  <AnimatePresence>
-                    {isMobileLoginOpen && (
-                      <motion.div 
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }} 
-                        animate={{ opacity: 1, y: 0, scale: 1 }} 
-                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        className="absolute right-0 top-full mt-2 w-48 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-100 p-2 z-50 flex flex-col gap-2 origin-top-right"
-                      >
-                        <button onClick={handleLogin} className="flex items-center justify-center gap-2 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 active:scale-95 transition-all">
-                          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-4 h-4" alt="G" />
-                          <span className="text-xs font-bold text-slate-700">구글 로그인</span>
-                        </button>
-                        <button onClick={handleKakaoLogin} className="flex items-center justify-center gap-2 py-2.5 bg-[#FEE500] rounded-xl shadow-sm hover:bg-[#FDD835] active:scale-95 transition-all">
-                          <img src="https://upload.wikimedia.org/wikipedia/commons/e/e3/KakaoTalk_logo.svg" className="w-4 h-4" alt="K" />
-                          <span className="text-xs font-bold text-slate-900">카카오 로그인</span>
-                        </button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-
-        {/* Body */}
-        <div className="p-4 md:p-8 flex-1 flex flex-col overflow-y-auto custom-scrollbar">
-          
-          {step !== 'done' && (
-            <div className="w-full max-w-2xl mx-auto mt-4 transition-all duration-500">
-              
-              {/* 테마 선택 */}
-              <div className="mb-8">
-                <p className="text-center text-sm font-medium text-slate-400 mb-4">오늘의 포스팅 주제는 무엇인가요?</p>
-                {/* ✨ 모바일: grid-cols-3 (3개씩), PC: grid-cols-6 (6개씩) */}
-                <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
-                  {THEMES.map((theme) => {
-                    const Icon = theme.icon;
-                    const isSelected = selectedTheme === theme.id;
-                    return (
-                      <button
-                        key={theme.id}
-                        onClick={() => setSelectedTheme(theme.id)}
-                        className={`flex flex-col items-center justify-center gap-2 p-2 md:p-3 rounded-2xl transition-all duration-300 ${
-                          isSelected 
-                            ? `bg-white shadow-lg shadow-slate-200 ring-2 ${themeStyles.ring} -translate-y-1` 
-                            : 'bg-white/40 hover:bg-white/80 hover:shadow-md text-slate-400'
-                        }`}
-                      >
-                        <div className={`p-2 rounded-full transition-colors ${isSelected ? themeStyles.iconBg : 'bg-slate-100 text-slate-400'}`}>
-                          <Icon className="w-4 h-4 md:w-5 md:h-5" />
-                        </div>
-                        <span className={`text-[10px] md:text-[11px] font-semibold ${isSelected ? 'text-slate-700' : 'text-slate-400'}`}>
-                          {theme.label.split('/')[0]}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-             {/* ✨ 검색창 & 분석 버튼 영역 */}
-              <div className="space-y-6 mb-10">
-                {/* flex-col: 모바일에서는 세로 배치 (검색창 위, 버튼 아래)
-                    md:flex-row: PC에서는 가로 배치 (한 줄)
-                */}
-                <div className="flex flex-col md:flex-row gap-3 relative z-10">
-                  
-                  {/* 검색창 영역 */}
-                  <div className="relative flex-1 group w-full">
-                    <div className={`absolute inset-0 rounded-2xl bg-gradient-to-r ${isTestMode ? 'from-orange-300 to-yellow-400' : 'from-sky-300 to-blue-400'} blur opacity-20 group-hover:opacity-40 transition-opacity`}></div>
-                    <input 
-                      type="text" 
-                      value={keyword}
-                      onChange={(e) => setKeyword(e.target.value)}
-                      placeholder={`${THEMES.find(t=>t.id===selectedTheme)?.label.split('/')[0]} 키워드 입력`}
-                      className={`relative w-full px-6 py-4 text-lg bg-white border rounded-2xl focus:outline-none focus:ring-4 shadow-lg text-slate-700 placeholder:text-slate-300 transition-all ${themeStyles.border} ${themeStyles.focusRing}`}
-                      onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleGenerate()}
-                    />
-                  </div>
-                  
-                  {/* 버튼 영역 (모바일에서는 가로로 꽉 차게, PC에서는 내용물만큼만) */}
-                  <div className="flex gap-2 w-full md:w-auto">
-                      {/* 📊 분석 버튼 (모바일: flex-1로 반반 차지) */}
-                      <button 
-                        onClick={handleAnalyze}
-                        disabled={isAnalyzing || isLoading}
-                        className="flex-1 md:flex-none px-4 py-4 bg-slate-800 text-white rounded-2xl font-bold shadow-lg hover:bg-slate-700 active:scale-95 disabled:opacity-50 transition-all flex flex-col items-center justify-center min-w-[80px]"
-                      >
-                        {isAnalyzing ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <BarChart3 className="w-6 h-6" />}
-                        <span className="text-[10px] mt-1 font-medium">분석</span>
-                      </button>
-
-                      {/* ✨ 생성 버튼 (모바일: flex-1로 반반 차지) */}
-                      <button 
-                        onClick={handleGenerate}
-                        disabled={isLoading}
-                        className={`flex-1 md:flex-none px-6 py-4 text-white rounded-2xl font-bold shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50 transition-all flex flex-col items-center justify-center min-w-[80px] ${themeStyles.button}`}
-                      >
-                        {isLoading ? <Sparkles className="w-6 h-6 animate-spin" /> : <Search className="w-6 h-6" />}
-                        <span className="text-[10px] mt-1 font-medium">생성</span>
-                      </button>
-                  </div>
-                </div>
-
-                {/* 📊 분석 결과 리포트 (분석 완료 시 표시) */}
-                <AnimatePresence>
-                  {analysisData && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: -10, height: 0 }} 
-                      animate={{ opacity: 1, y: 0, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
-                        
-                        {/* 1. 내 키워드 진단 */}
-                        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                          <div>
-                            <span className="text-xs font-bold text-slate-400 uppercase">Current Keyword</span>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-lg font-bold text-slate-800">{analysisData.main.keyword}</span>
-                              {analysisData.main.compIdx === 'HIGH' && <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">🔥 경쟁높음</span>}
-                              {analysisData.main.compIdx === 'MID' && <span className="text-[10px] font-bold bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded-full">⚡ 경쟁중간</span>}
-                              {analysisData.main.compIdx === 'LOW' && <span className="text-[10px] font-bold bg-green-100 text-green-600 px-2 py-0.5 rounded-full">🍀 경쟁낮음</span>}
-                            </div>
-                          </div>
-                          <div className="flex gap-4 text-right">
-                            <div>
-                              <p className="text-xs text-slate-400 mb-0.5">월간 검색수</p>
-                              <p className="font-bold text-slate-700">{analysisData.main.totalSearch.toLocaleString()}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-slate-400 mb-0.5">클릭수</p>
-                              <p className="font-bold text-slate-700">{analysisData.main.totalClick}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 2. 황금 키워드 추천 */}
-                        <div>
-                           <div className="flex items-center gap-2 mb-3">
-                             <Sparkles className="w-4 h-4 text-yellow-500" />
-                             <span className="text-sm font-bold text-slate-600">AI 추천 황금 키워드 (클릭하여 교체)</span>
-                           </div>
-                           
-                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                             {analysisData.recommendations.length > 0 ? (
-                               analysisData.recommendations.map((item, idx) => (
-                                 <button 
-                                   key={idx}
-                                   onClick={() => {
-                                     setKeyword(item.keyword);
-                                     handleAnalyze(); // 교체 후 바로 재분석
-                                   }}
-                                   className="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-blue-50 hover:ring-1 ring-blue-200 transition-all group text-left"
-                                 >
-                                   <div>
-                                     <div className="flex items-center gap-2">
-                                       <span className="text-sm font-bold text-slate-700 group-hover:text-blue-600">{item.keyword}</span>
-                                       {item.totalSearch >= 1000 && item.totalSearch <= 30000 && (
-                                         <span className="text-[9px] font-bold bg-green-100 text-green-600 px-1.5 py-0.5 rounded">Green Zone</span>
-                                       )}
-                                     </div>
-                                     <div className="text-[10px] text-slate-400 mt-1 flex gap-2">
-                                       <span>검색 {item.totalSearch.toLocaleString()}</span>
-                                       <span>•</span>
-                                       <span>클릭 {item.totalClick}</span>
-                                     </div>
-                                   </div>
-                                   <div className={`text-[10px] font-bold px-2 py-1 rounded-lg ${
-                                     item.compIdx === 'LOW' ? 'bg-green-100 text-green-600' : 
-                                     item.compIdx === 'MID' ? 'bg-yellow-100 text-yellow-600' : 'bg-red-100 text-red-500'
-                                   }`}>
-                                     {item.compIdx}
-                                   </div>
-                                 </button>
-                               ))
-                             ) : (
-                               <div className="col-span-2 text-center py-4 text-sm text-slate-400 bg-slate-50 rounded-xl">
-                                 추천할 만한 연관 키워드가 없네요 😅 <br/> 다른 키워드로 시도해보세요!
-                               </div>
-                             )}
-                           </div>
-                        </div>
-
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* ... 기존 키워드 분석 결과 아래에 추가 ... */}
-
-                {/* 🏆 상위 노출 전략 가이드 (New) */}
-                {exposureGuide && (
-                  <div className="mt-4 pt-4 border-t border-slate-200">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="bg-red-500 text-white p-1 rounded-md">
-                        <BarChart3 className="w-4 h-4" />
-                      </div>
-                      <span className="text-sm font-bold text-slate-700">상위 노출 공략집 (TOP 5 분석)</span>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <p className="text-[10px] text-slate-400 mb-1">목표 글자수</p>
-                        <p className="text-lg font-black text-slate-700">{exposureGuide.charCount.toLocaleString()}</p>
-                        <p className="text-[9px] text-blue-500 font-bold">2,000자 이상</p>
-                      </div>
-                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <p className="text-[10px] text-slate-400 mb-1">사진 개수</p>
-                        <p className="text-lg font-black text-slate-700">{exposureGuide.imgCount}장</p>
-                        <p className="text-[9px] text-blue-500 font-bold">15장 이상 권장</p>
-                      </div>
-                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <p className="text-[10px] text-slate-400 mb-1">키워드 반복</p>
-                        <p className="text-lg font-black text-slate-700">{exposureGuide.keywordCount}회</p>
-                        <p className="text-[9px] text-blue-500 font-bold">자연스럽게</p>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-3 text-[10px] text-slate-400 bg-slate-100 p-2 rounded-lg flex items-center gap-2">
-                      <span>💡</span>
-                      <span>
-                        상위 블로거들은 평균 <b>{exposureGuide.charCount}자</b>를 쓰고 있습니다. 
-                        비슷한 분량으로 작성하면 노출 확률이 올라갑니다!
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* ✨ 가이드 입력 아코디언 */}
-                <div className="relative px-2">
-                   <button 
-                     onClick={() => setUseGuide(!useGuide)}
-                     className={`flex items-center gap-2 text-sm font-medium transition-colors ${useGuide ? themeStyles.accentText : 'text-slate-400 hover:text-slate-600'}`}
-                   >
-                     <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${useGuide ? `${isTestMode ? 'bg-orange-500 border-orange-500' : 'bg-blue-500 border-blue-500'}` : 'bg-white border-slate-300'}`}>
-                        {useGuide && <span className="text-white text-[10px]">✔</span>}
-                     </div>
-                     <MessageSquarePlus className="w-4 h-4" />
-                     <span>AI에게 상세 가이드 주기 (선택사항)</span>
-                   </button>
-                   
-                   <AnimatePresence>
-                      {useGuide && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          className="overflow-hidden"
-                        >
-                          <div className="relative">
-                             {/* ✨ [추가된 부분] 말투 선택 및 저장 영역 */}
-                            <div className="flex gap-2 mb-2 mt-2">
-                              <select 
-                                value={selectedPromptId}
-                                onChange={(e) => {
-                                  const pid = e.target.value;
-                                  setSelectedPromptId(pid);
-                                  if (!pid) { setGuide(''); return; }
-
-                                  // 1. 내 저장 목록에서 찾기
-                                  let selected = prompts.find(p => p.id === pid);
-                                  // 2. 없으면 기본 프리셋에서 찾기
-                                  if (!selected) selected = DEFAULT_PROMPTS.find(p => p.id === pid);
-
-                                  if (selected) {
-                                    setGuide(selected.system_prompt);
-                                    setUseGuide(true);
-                                  }
-                                }}
-                                className="..."
-                              >
-                                <option value="">📋 저장된 말투 불러오기...</option>
-                                
-                                {/* ✨ [추가] 기본 제공 프리셋 */}
-                                <optgroup label="✨ Briter AI 추천 프리셋">
-                                  {DEFAULT_PROMPTS.map(p => (
-                                    <option key={p.id} value={p.id}>{p.title}</option>
-                                  ))}
-                                </optgroup>
-
-                                {/* 기존 내 말투 목록 */}
-                                {prompts.length > 0 && (
-                                  <optgroup label="📂 내 저장 목록">
-                                    {prompts.map(p => (
-                                      <option key={p.id} value={p.id}>{p.title}</option>
-                                    ))}
-                                  </optgroup>
-                                )}
-                              </select>
-
-                              {/* ✨ [삭제] 버튼 추가: 선택된 게 있을 때만 보임 */}
-                              {selectedPromptId && (
-                                <button 
-                                  onClick={handleDeletePrompt}
-                                  className="px-3 py-1 bg-red-100 hover:bg-red-200 rounded-lg text-xs font-bold text-red-500 transition-colors"
-                                  title="선택한 말투 삭제"
-                                >
-                                  삭제
-                                </button>
-                              )}
-                              
-                              <button 
-                                onClick={() => setIsPromptModalOpen(true)}
-                                className="px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-bold text-slate-600 transition-colors"
-                              >
-                                + 저장
-                              </button>
-                            </div>
-
-                            <textarea
-                              value={guide}
-                              onChange={(e) => setGuide(e.target.value)}
-                              placeholder="예시: '30대 직장인 말투로 써줘...' / '업체에서 준 가이드를 여기에 붙여넣으세요...'"
-                              className={`w-full mt-3 p-4 rounded-xl border bg-white/50 focus:bg-white text-sm text-slate-600 placeholder:text-slate-300 focus:outline-none focus:ring-2 resize-none h-40 transition-all ${themeStyles.border} ${themeStyles.focusRing}`}
-                            />
-                            
-                            {/* ✨ 글자 수 카운터 */}
-                            <div className="flex justify-between items-center mt-2 px-1">
-                               <p className="text-[11px] text-slate-400">
-                                 * 업체 가이드를 통째로 붙여넣으셔도 됩니다. (길이 제한 없음)
-                               </p>
-                               <div className="text-xs text-slate-400 font-medium bg-white/50 px-2 py-1 rounded-md border border-slate-100">
-                                 📝 현재 <span className={`font-bold ${themeStyles.accentText}`}>{guide.length.toLocaleString()}</span>자
-                               </div>
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                </div>
-              </div>
-
-              {/* ✨ [추가] 말투 저장 팝업 (모달) */}
-              {isPromptModalOpen && (
-                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-                  <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-fade-in-up">
-                    <h3 className="text-lg font-bold text-slate-800 mb-2">나만의 말투 저장</h3>
-                    <p className="text-xs text-slate-500 mb-4">현재 작성한 가이드를 저장해두고 계속 쓰세요!</p>
-                    
-                    <input 
-                      type="text" 
-                      placeholder="말투 이름 (예: 20대 감성, 맛집 전문가)" 
-                      value={newPromptTitle}
-                      onChange={(e) => setNewPromptTitle(e.target.value)}
-                      className="w-full p-3 border rounded-xl mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    
-                    <div className="flex gap-2">
-                      <button onClick={() => setIsPromptModalOpen(false)} className="flex-1 py-3 bg-slate-100 rounded-xl text-sm font-bold text-slate-600">취소</button>
-                      <button onClick={handleSavePrompt} className="flex-1 py-3 bg-slate-800 rounded-xl text-sm font-bold text-white">저장하기</button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 히스토리 */}
-              {history.length > 0 && !isLoading && (
-                <div className="animate-fade-in-up px-2">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      <Clock className="w-3 h-3" /> Recent Drafts
-                    </div>
-                  </div>
-                  {/* 히스토리 영역 수정 */}
-                  <div className="flex flex-wrap gap-2">
-                    {history.map((item) => (
-                      <div // button을 div로 감싸거나, button 안에 로직 수정
-                        key={item.id}
-                        className={`relative pl-4 pr-2 py-2 bg-white/60 hover:bg-white border border-white/50 rounded-full text-sm text-slate-500 shadow-sm hover:shadow-md transition-all flex items-center gap-2 group hover:${themeStyles.border} cursor-pointer`}
-                        onClick={() => loadFromHistory(item)} // 클릭하면 불러오기
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full bg-slate-300 transition-colors group-hover:${item.isTestMode ? 'bg-orange-400' : 'bg-blue-400'}`}></span>
-                        <span className={`group-hover:${themeStyles.accentText} mr-1`}>{item.keyword}</span>
-                        
-                        {/* ✨ [X] 삭제 버튼 추가 */}
-                        <button
-                          onClick={(e) => deleteHistoryItem(e, item.id)}
-                          className="p-1 rounded-full hover:bg-red-100 text-slate-300 hover:text-red-500 transition-colors"
-                          title="삭제"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Status & Result Area */}
-          <div className="flex-1 relative w-full max-w-4xl mx-auto min-h-[300px]">
-            <AnimatePresence mode='wait'>
-              
-              {step === 'idle' && (
-                <motion.div 
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  className="absolute inset-0 flex flex-col items-center justify-center text-slate-300 pb-10"
-                >
-                  <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 transition-colors ${themeStyles.lightBg}`}>
-                    <Sparkles className={`w-10 h-10 ${themeStyles.subText}`} />
-                  </div>
-                  <p className="text-slate-400 font-medium text-center leading-relaxed">
-                    주제를 선택하고 키워드를 던져주세요.<br/>
-                    <span className={`${themeStyles.accentText} font-semibold`}>제품 리뷰</span>부터 <span className={`${themeStyles.accentText} font-semibold`}>맛집 탐방</span>까지.<br/>
-                    {isTestMode ? '테스트 모드라 안심하고 쓰세요!' : '감성 가득한 글을 써드릴게요.'} ☁️
-                  </p>
-                </motion.div>
-              )}
-
-              {(step === 'searching' || step === 'writing') && (
-                <motion.div 
-                  key="loading"
-                  initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                  className="absolute inset-0 flex flex-col items-center justify-center gap-8 pb-10"
-                >
-                  <div className="relative">
-                    <div className={`w-20 h-20 border-4 border-slate-100 rounded-full animate-spin border-t-${isTestMode ? 'orange' : 'blue'}-400`} />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className={`w-2 h-2 rounded-full animate-ping ${isTestMode ? 'bg-orange-400' : 'bg-blue-400'}`} />
-                    </div>
-                  </div>
-                  <div className="text-center space-y-2">
-                    <h3 className="text-xl font-bold text-slate-700">
-                      {step === 'searching' ? '정보를 모으고 있어요...' : '글을 다듬고 있어요...'}
-                    </h3>
-                    <p className="text-slate-400 text-sm">
-                        {step === 'searching' ? '최신 리뷰와 꿀팁을 찾는 중 🔍' : '소녀 감성 한 스푼 넣는 중 ✨'}
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-
-              {step === 'done' && (
-                <motion.div 
-                  key="result"
-                  initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-                  className={`h-full flex flex-col bg-white rounded-3xl border border-white/60 shadow-lg overflow-hidden transition-all duration-500 ${isMobileView ? 'max-w-[375px] mx-auto border-4 border-slate-200' : ''}`}
-                >
-                  {/* 결과 헤더 */}
-                  <div className={`px-4 md:px-6 py-4 border-b flex justify-between items-center transition-colors ${isTestMode ? 'bg-orange-50/50 border-orange-100' : 'bg-blue-50/50 border-blue-100'}`}>
-                    
-                    <div className="flex items-center gap-2 overflow-hidden mr-2">
-                        <button onClick={resetToHome} className={`p-2 -ml-2 text-slate-400 hover:bg-white/50 rounded-xl transition-all hover:${themeStyles.accentText} flex-shrink-0`} title="처음으로">
-                          <RotateCcw className="w-5 h-5" />
-                        </button>
-                        <h2 className="font-bold text-lg text-slate-700 flex items-center gap-2 overflow-hidden">
-                          <span className="truncate block">{keyword}</span> 
-                        </h2>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 md:gap-2">
-                        {isEditing ? (
-                          <>
-                            <button onClick={cancelEditing} className="p-2 text-slate-400 hover:text-red-500 hover:bg-white rounded-lg transition-colors flex items-center gap-1 text-xs font-bold">
-                              <XCircle className="w-4 h-4" /> 취소
-                            </button>
-                            <button onClick={saveEditing} className="p-2 bg-slate-800 text-white hover:bg-slate-900 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold shadow-sm">
-                              <Save className="w-4 h-4" /> 저장
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button onClick={() => setIsMobileView(!isMobileView)} className={`p-2 rounded-lg transition-colors ${isMobileView ? `${themeStyles.lightBg} ${themeStyles.accentText}` : 'text-slate-400 hover:bg-white'}`} title="모바일 미리보기">
-                              {isMobileView ? <Smartphone className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
-                            </button>
-
-                            <button onClick={startEditing} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-white rounded-lg transition-colors" title="내용 수정하기">
-                              <PenLine className="w-5 h-5" />
-                            </button>
-
-                            <button onClick={handleDownloadThumbnail} className="p-2 text-slate-400 hover:text-pink-500 hover:bg-white rounded-lg transition-colors" title="썸네일 이미지 만들기">
-                              <ImageIcon className="w-5 h-5" />
-                            </button>
-
-                            <button onClick={handleDownloadFile} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-white rounded-lg transition-colors" title="텍스트 파일로 저장">
-                              <Download className="w-5 h-5" />
-                            </button>
-                        
-                            <button onClick={handleCopyCleanText} className={`flex-shrink-0 flex items-center gap-2 font-bold transition-all rounded-xl shadow-sm transform active:scale-95 text-xs px-3 py-2 md:text-sm md:px-4 md:py-2 whitespace-nowrap ${copyStatus === 'copied' ? 'bg-green-500 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'}`}>
-                              {copyStatus === 'copied' ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                              <span>{copyStatus === 'copied' ? '완료' : '복사'}</span>
-                            </button>
-                          </>
-                        )}
-                    </div>
-                  </div>
-                  
-                  {/* 결과 본문 */}
-                  <div className={`flex-1 overflow-y-auto p-8 custom-scrollbar bg-white/50 ${isMobileView ? 'text-sm' : ''}`}>
-                    
-                    {isEditing ? (
-                      <textarea
-                        value={editableResult}
-                        onChange={(e) => setEditableResult(e.target.value)}
-                        className={`w-full h-full min-h-[400px] p-4 bg-white border-2 rounded-xl focus:outline-none resize-none font-mono text-sm leading-relaxed ${themeStyles.focusRing} ${isTestMode ? 'border-orange-200' : 'border-blue-200'}`}
-                      />
-                    ) : (
-                      <div className={`prose prose-slate max-w-none 
-                        prose-headings:text-slate-800 prose-headings:font-bold 
-                        prose-h1:text-2xl prose-h2:text-xl prose-h2:mt-8
-                        prose-p:text-slate-600 prose-p:leading-8 
-                        prose-strong:font-bold
-                        prose-li:text-slate-600 ${isTestMode ? 'prose-h2:text-orange-600 prose-strong:text-orange-500 prose-li:marker:text-orange-300' : 'prose-h2:text-blue-600 prose-strong:text-blue-500 prose-li:marker:text-blue-300'}`}>
-                        <ReactMarkdown>
-                          {result.replace(/\\#/g, '#')}
-                        </ReactMarkdown>
-                      </div>
-                    )}
-                    
-                    {/* 하단 정보 */}
-                    <div className="mt-10 pt-6 border-t border-dashed border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-slate-400">
-                        <div className="flex flex-col gap-1 text-center md:text-left">
-                          <span className="opacity-80">Briter AI가 작성한 초안입니다. ({resultIsTestMode ? '테스트 모드' : '실전 모드'})</span>
-                          <span className={`font-bold ${themeStyles.accentText} tracking-tight`}>
-                            Copyright © Simsimpuri All Rights Reserved.
-                          </span>
-                        </div>
-                        
-                        <div className="flex items-center gap-3 font-medium bg-white/50 px-3 py-1.5 rounded-lg border border-slate-100 shadow-sm">
-                          <div className="flex items-center gap-1.5">
-                             <AlignLeft className="w-3 h-3" />
-                             <span>공백포함 <b className={`text-slate-600 ${themeStyles.accentText}`}>{result.length}</b></span>
-                          </div>
-                          <span className="w-px h-3 bg-slate-300"></span>
-                          <div>
-                             <span>제외 <b className={`text-slate-600 ${themeStyles.accentText}`}>{result.replace(/\s/g, '').length}</b></span>
-                          </div>
-                        </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-            </AnimatePresence>
-          </div>
-        </div>
+          }
+        >
+          <WritingSection
+            step={step}
+            isLoading={isLoading}
+            isAnalyzing={isAnalyzing}
+            isTestMode={isTestMode}
+            resultIsTestMode={resultIsTestMode}
+            isMobileView={isMobileView}
+            isEditing={isEditing}
+            keyword={keyword}
+            keywordError={keywordError}
+            setKeyword={handleKeywordChange}
+            selectedTheme={selectedTheme}
+            setSelectedTheme={setSelectedTheme}
+            themeStyles={themeStyles}
+            themes={THEMES}
+            handleAnalyze={handleAnalyze}
+            handleGenerate={handleGenerate}
+            analysisData={analysisData}
+            exposureGuide={exposureGuide}
+            useGuide={useGuide}
+            setUseGuide={setUseGuide}
+            selectedPromptId={selectedPromptId}
+            setSelectedPromptId={setSelectedPromptId}
+            prompts={prompts}
+            defaultPrompts={DEFAULT_PROMPTS}
+            guide={guide}
+            setGuide={setGuide}
+            handleDeletePrompt={handleDeletePrompt}
+            setIsPromptModalOpen={setIsPromptModalOpen}
+            isPromptModalOpen={isPromptModalOpen}
+            newPromptTitle={newPromptTitle}
+            setNewPromptTitle={setNewPromptTitle}
+            handleSavePrompt={handleSavePrompt}
+            history={history}
+            loadFromHistory={loadFromHistory}
+            deleteHistoryItem={deleteHistoryItem}
+            resetToHome={resetToHome}
+            cancelEditing={cancelEditing}
+            saveEditing={saveEditing}
+            startEditing={startEditing}
+            setIsMobileView={setIsMobileView}
+            handleDownloadThumbnail={handleDownloadThumbnail}
+            handleDownloadFile={handleDownloadFile}
+            handleCopyCleanText={handleCopyCleanText}
+            copyStatus={copyStatus}
+            result={result}
+            editableResult={editableResult}
+            setEditableResult={setEditableResult}
+          />
+        </Suspense>
       </div>
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-[120] w-full max-w-md -translate-x-1/2 px-4">
+          <Toast
+            type={toast.type}
+            message={toast.message}
+            onClose={() => setToast(null)}
+          />
+        </div>
+      )}
+
+      <Modal
+        isOpen={confirmState.isOpen}
+        onClose={() => closeConfirm(false)}
+        className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
+      >
+        <h3 className="text-lg font-bold text-slate-800">{confirmState.title}</h3>
+        <p className="mt-2 whitespace-pre-line text-sm text-slate-600">{confirmState.message}</p>
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => closeConfirm(false)}
+            className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100"
+          >
+            {confirmState.cancelText}
+          </button>
+          <button
+            type="button"
+            onClick={() => closeConfirm(true)}
+            className={`rounded-xl px-4 py-2 text-sm font-bold text-white ${
+              confirmState.danger ? 'bg-red-500 hover:bg-red-600' : 'bg-slate-800 hover:bg-slate-900'
+            }`}
+          >
+            {confirmState.confirmText}
+          </button>
+        </div>
+      </Modal>
 
       {/* ✨ 내 정보 설정 모달 */}
           {isProfileModalOpen && (
@@ -1438,16 +683,29 @@ function App() {
             </div>
           )}
 
-    {/* ✨ 4. 관리자 페이지 모달 (Props 추가됨!) */}
-          {showAdmin && user && (
-            <AdminPage 
-              onClose={() => setShowAdmin(false)} 
-              currentUserId={user.id} // ✨ 내 ID 전달
-              onMyGradeChanged={() => checkAdmin(user.id)} // ✨ 내 등급 다시 체크해! 라고 함수 전달
-            />
-          )}
+      {/* ✨ 4. 관리자 페이지 모달 (Props 추가됨!) */}
+      {showAdmin && user && (
+        <Suspense fallback={
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40">
+            <div className="rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-600 shadow-lg">관리자 페이지 로딩 중...</div>
+          </div>
+        }>
+          <AdminPage
+            onClose={() => setShowAdmin(false)}
+            currentUserId={user.id}
+            onMyGradeChanged={() => checkAdmin(user.id)}
+          />
+        </Suspense>
+      )}
         </div>
       );
     }
 
 export default App;
+
+
+
+
+
+
+

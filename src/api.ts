@@ -73,7 +73,7 @@ export const generateBlogPost = async (
 
     return textPart;
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Axios 에러 처리 (네트워크 오류, 429, 500 등)
     if (axios.isAxiosError(error)) {
       const status = error.response?.status;
@@ -91,7 +91,8 @@ export const generateBlogPost = async (
     } 
     
     // 일반 로직 에러 처리
-    console.error("🚨 로직 에러:", error.message);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error("🚨 로직 에러:", message);
     throw error; 
   }
 };
