@@ -1,6 +1,8 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClient';
+
+export const LOGIN_SUCCESS_TOAST_PENDING_KEY = 'briter_login_success_toast_pending';
 
 export function useAuth(onAfterLogout?: () => void) {
   const [user, setUser] = useState<User | null>(null);
@@ -31,11 +33,15 @@ export function useAuth(onAfterLogout?: () => void) {
   }, []);
 
   const signInWithProvider = async (provider: 'google' | 'kakao') => {
+    sessionStorage.setItem(LOGIN_SUCCESS_TOAST_PENDING_KEY, '1');
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: { redirectTo: window.location.origin },
     });
-    if (error) throw error;
+    if (error) {
+      sessionStorage.removeItem(LOGIN_SUCCESS_TOAST_PENDING_KEY);
+      throw error;
+    }
   };
 
   const handleLogin = async () => {

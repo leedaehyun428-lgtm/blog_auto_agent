@@ -9,7 +9,7 @@ import WalletModal from './components/WalletModal';
 import GuideModal from './components/GuideModal';
 import Modal from './components/common/Modal';
 import Toast, { type ToastType } from './components/common/Toast';
-import { useAuth } from './hooks/useAuth';
+import { LOGIN_SUCCESS_TOAST_PENDING_KEY, useAuth } from './hooks/useAuth';
 import { useHistory } from './hooks/useHistory';
 import { useGeneration } from './hooks/useGeneration';
 
@@ -47,6 +47,7 @@ interface ConfirmState {
 const AdminPage = lazy(() => import('./AdminPage'));
 const WritingSection = lazy(() => import('./components/features/writing/WritingSection'));
 const SPLASH_FADE_MS = 450;
+const INITIAL_NOTICE_DELAY_MS = 400;
 const NOTICE_HIDE_UNTIL_KEY = 'briter_notice_hide_until';
 const PENDING_ACTION_KEY = 'briter_pending_action';
 
@@ -153,6 +154,7 @@ function App() {
   const [isBootLoading, setIsBootLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   const [isSplashVisible, setIsSplashVisible] = useState(true);
+  const hasInitialNoticePresentedRef = useRef(false);
   const [celebrationToast, setCelebrationToast] = useState<{ id: number; message: string } | null>(null);
   const celebrationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevVoltsRef = useRef<number | null>(null);
@@ -229,7 +231,6 @@ function App() {
 
     setActiveNotice(data as NoticeRow);
     setNoticeDismissForDay(false);
-    setIsInitialNoticeOpen(true);
   };
   const launchConfetti = (variant: 'welcome' | 'charge') => {
     if (variant === 'welcome') {
@@ -575,6 +576,20 @@ function App() {
   }, [volts, user, loading]);
 
   useEffect(() => {
+    if (loading || showSplash) return;
+    if (!activeNotice || hasInitialNoticePresentedRef.current) return;
+
+    const openNoticeTimeout = setTimeout(() => {
+      hasInitialNoticePresentedRef.current = true;
+      setIsInitialNoticeOpen(true);
+    }, INITIAL_NOTICE_DELAY_MS);
+
+    return () => {
+      clearTimeout(openNoticeTimeout);
+    };
+  }, [loading, showSplash, activeNotice]);
+
+  useEffect(() => {
     return () => {
       if (celebrationTimeoutRef.current) {
         clearTimeout(celebrationTimeoutRef.current);
@@ -591,6 +606,16 @@ function App() {
     setIsAuthModalOpen(false);
     void handleGenerateWithGuard();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (loading || !user) return;
+    const pendingLoginToast = sessionStorage.getItem(LOGIN_SUCCESS_TOAST_PENDING_KEY);
+    if (pendingLoginToast !== '1') return;
+
+    sessionStorage.removeItem(LOGIN_SUCCESS_TOAST_PENDING_KEY);
+    setIsAuthModalOpen(false);
+    notify('success', '로그인 되었습니다.');
+  }, [user, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   // --------------- [핸들러 함수들 (Handlers)] ---------------
@@ -800,14 +825,14 @@ function App() {
           <div className={`absolute top-[-150px] right-[-150px] w-[600px] h-[600px] rounded-full blur-[100px] opacity-30 ${isBasicMode ? 'bg-orange-400' : 'bg-blue-400'}`}></div>
           <div className={`absolute bottom-[-150px] left-[-150px] w-[600px] h-[600px] rounded-full blur-[100px] opacity-30 ${isBasicMode ? 'bg-yellow-400' : 'bg-purple-400'}`}></div>
           
-          <div className="z-10 text-center flex flex-col items-center gap-10">
-            <div className={`px-10 py-4 rounded-full text-4xl font-bold bg-white/80 backdrop-blur shadow-sm ${themeStyles.accentText}`}>
+          <div className="z-10 text-center flex flex-col items-center">
+            <div className={`inline-flex min-h-[92px] items-center justify-center rounded-full bg-white/80 px-12 py-4 text-4xl font-bold leading-none backdrop-blur shadow-sm ${themeStyles.accentText}`}>
               {THEMES.find(t=>t.id===selectedTheme)?.label} Review
             </div>
-            <h1 className="text-[180px] font-black text-slate-800 leading-none drop-shadow-sm tracking-tight" style={{ wordBreak: 'keep-all' }}>
+            <h1 className="mt-12 text-[180px] font-black text-slate-800 leading-[1.06] drop-shadow-sm tracking-[-0.02em]" style={{ wordBreak: 'keep-all' }}>
               {keyword}
             </h1>
-            <p className="text-5xl font-medium text-slate-500 mt-4 opacity-80">
+            <p className="mt-10 text-5xl font-medium tracking-[0.02em] text-slate-500 opacity-80">
               솔직하고 꼼꼼한 방문 후기 ✨
             </p>
           </div>
@@ -1114,4 +1139,3 @@ function App() {
     }
 
 export default App;
-
