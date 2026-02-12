@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -176,6 +176,7 @@ export default function WritingSection({
   const [isArchiveOpen, setIsArchiveOpen] = useState(true);
   const [archivePage, setArchivePage] = useState(1);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  const prevIsLoadingRef = useRef(false);
   const ARCHIVE_PAGE_SIZE = 7;
 
   const loadingMessages = useMemo(
@@ -199,17 +200,22 @@ export default function WritingSection({
   useEffect(() => {
     if (!isLoading) {
       setLoadingMessageIndex(0);
+      prevIsLoadingRef.current = false;
       return;
     }
 
-    setLoadingMessageIndex(0);
+    if (!prevIsLoadingRef.current) {
+      setLoadingMessageIndex(0);
+    }
+    prevIsLoadingRef.current = true;
+
     const lastIndex = loadingMessages.length - 1;
     const timer = setInterval(() => {
       setLoadingMessageIndex((prev) => Math.min(prev + 1, lastIndex));
     }, 3000);
 
     return () => clearInterval(timer);
-  }, [isLoading, loadingMessages]);
+  }, [isLoading, loadingMessages.length]);
 
   useEffect(() => {
     if (!isLoading) return;
@@ -819,7 +825,7 @@ export default function WritingSection({
                         <div className="flex flex-col gap-1 text-center md:text-left">
                           <span className="opacity-80">Briter AI가 작성한 초안입니다. ({isResultBasicMode ? '일반 모드' : '고성능 모드'})</span>
                           <span className={`font-bold ${themeStyles.accentText} tracking-tight`}>
-                            Copyright 짤 Simsimpuri All Rights Reserved.
+                            Copyright @ Simsimpuri All Rights Reserved.
                           </span>
                         </div>
                         
@@ -843,6 +849,7 @@ export default function WritingSection({
         </div>
   );
 }
+
 
 
 
