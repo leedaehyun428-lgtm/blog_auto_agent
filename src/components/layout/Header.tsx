@@ -13,6 +13,10 @@ import {
   DownloadCloud,
   UploadCloud,
   Trash2,
+  Plus,
+  Zap,
+  ShieldAlert,
+  ChevronRight,
 } from 'lucide-react';
 
 interface ThemeStyles {
@@ -29,6 +33,7 @@ interface HeaderProps {
   myBlogId: string;
   myInfluencerUrl: string;
   openProfileModal: () => void;
+  openWalletModal: () => void;
   userGrade: string;
   volts: number;
   handleLogout: () => void;
@@ -56,6 +61,7 @@ export default function Header({
   myBlogId,
   myInfluencerUrl,
   openProfileModal,
+  openWalletModal,
   userGrade,
   volts,
   handleLogout,
@@ -138,9 +144,20 @@ export default function Header({
                 {userGrade === 'admin' ? 'ADMIN' : userGrade === 'pro' ? 'PRO' : 'BASIC'}
               </div>
 
-              <div className="flex items-center gap-1 px-2 py-0.5 bg-yellow-50 text-yellow-700 rounded-md text-xs font-bold border border-yellow-200 cursor-help" title="잔액 충전하기 (준비중)">
-                <span>⚡</span><span>{volts.toLocaleString()}</span>
-              </div>
+              <button
+                type="button"
+                onClick={openWalletModal}
+                className="group flex items-center gap-2 pl-3 pr-1.5 py-1.5 bg-yellow-50/80 hover:bg-yellow-100 border border-yellow-200 rounded-full transition-all cursor-pointer"
+                title="볼트 충전하기"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-yellow-600 fill-yellow-600" />
+                  <span className="text-sm font-bold text-slate-800 tabular-nums">{volts.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-center w-5 h-5 bg-yellow-400 text-white rounded-full shadow-sm group-hover:scale-110 transition-transform">
+                  <Plus className="w-3.5 h-3.5" strokeWidth={3} />
+                </div>
+              </button>
 
               <div className="flex items-center gap-2 pl-2 border-l border-slate-200 ml-1">
                 {user.user_metadata.avatar_url ? (
@@ -172,8 +189,20 @@ export default function Header({
                     className="absolute right-0 top-full mt-3 w-72 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-white/50 z-50 overflow-hidden ring-1 ring-slate-900/5 origin-top-right"
                   >
                     {isAdmin && (
-                      <button onClick={() => setShowAdmin(true)} className="w-full flex items-center justify-center gap-2 px-4 py-3 mt-2 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 shadow-lg">
-                        <UserCog className="w-4 h-4" /> 관리자 페이지 열기
+                      <button
+                        onClick={() => setShowAdmin(true)}
+                        className="group mx-2 mt-2 flex w-[calc(100%-1rem)] items-center justify-between rounded-xl bg-gradient-to-r from-slate-800 to-slate-900 p-3 text-white shadow-md transition-all hover:from-slate-700 hover:to-slate-800 hover:shadow-lg"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="rounded-lg bg-white/10 p-1.5">
+                            <ShieldAlert className="h-4 w-4 text-yellow-400" />
+                          </div>
+                          <div className="flex flex-col items-start">
+                            <span className="text-[10px] font-bold tracking-wide text-yellow-400">ADMIN</span>
+                            <span className="text-xs text-slate-300">관리자 페이지</span>
+                          </div>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-slate-400 transition-all group-hover:translate-x-1 group-hover:text-white" />
                       </button>
                     )}
 
@@ -190,6 +219,7 @@ export default function Header({
                             <span className="text-[10px] text-slate-400">{user.email}</span>
                           </div>
                         </div>
+                        <button onClick={handleLogout} className="w-full py-2 text-xs font-bold bg-white border border-slate-200 rounded-lg text-slate-600 shadow-sm hover:bg-slate-50">로그아웃</button>
                         <div className="flex items-center gap-2 p-2 bg-white rounded-xl border border-slate-100 shadow-sm">
                           <div className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase border tracking-wider text-center ${
                             userGrade === 'admin' ? 'bg-slate-800 text-white border-slate-700' :
@@ -198,11 +228,25 @@ export default function Header({
                           }`}>
                             {userGrade === 'admin' ? 'ADMIN' : userGrade === 'pro' ? 'PRO' : 'FREE'}
                           </div>
-                          <div className="flex-1 flex items-center justify-between px-3 py-1 bg-yellow-50 text-yellow-700 rounded-lg text-xs font-bold border border-yellow-100">
+                          <button
+                            type="button"
+                            onClick={openWalletModal}
+                            className="flex-1 flex items-center justify-between px-3 py-1 bg-yellow-50 text-yellow-700 rounded-lg text-xs font-bold border border-yellow-100 hover:bg-yellow-100 transition-colors"
+                          >
                             <span>⚡ 보유 볼트</span><span>{volts.toLocaleString()} V</span>
-                          </div>
+                          </button>
                         </div>
-                        <button onClick={handleLogout} className="w-full py-2 text-xs font-bold bg-white border border-slate-200 rounded-lg text-slate-600 shadow-sm hover:bg-slate-50">로그아웃</button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            openWalletModal();
+                            setIsMenuOpen(false);
+                          }}
+                          className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 shadow-sm hover:bg-yellow-100 transition-colors"
+                        >
+                          <Zap className="w-4 h-4" />
+                          볼트 충전하기
+                        </button>
                       </div>
                     </div>
 
@@ -321,5 +365,3 @@ export default function Header({
     </div>
   );
 }
-
-

@@ -4,6 +4,7 @@ import type { LucideIcon } from 'lucide-react';
 import { type ThemeType } from './api';
 import { supabase } from './supabaseClient';
 import Header from './components/layout/Header';
+import WalletModal from './components/WalletModal';
 import Modal from './components/common/Modal';
 import Toast, { type ToastType } from './components/common/Toast';
 import { useAuth } from './hooks/useAuth';
@@ -112,6 +113,7 @@ function App() {
   const [myBlogId, setMyBlogId] = useState('');
   const [myInfluencerUrl, setMyInfluencerUrl] = useState('');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false); // 설정창 열기/닫기
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
 
   // [신규] 모달 안에서만 쓸 '임시 수정용' 변수
   const [editBlogId, setEditBlogId] = useState('');
@@ -261,14 +263,14 @@ function App() {
   // 메뉴 닫기 이벤트 핸들러
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (isProfileModalOpen) return;
+      if (isProfileModalOpen || isWalletModalOpen) return;
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setIsMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isProfileModalOpen]);
+  }, [isProfileModalOpen, isWalletModalOpen]);
 
   useEffect(() => {
     return () => {
@@ -426,6 +428,12 @@ function App() {
   };
   const closeProfileModal = () => {
     setIsProfileModalOpen(false);
+  };
+  const openWalletModal = () => {
+    setIsWalletModalOpen(true);
+  };
+  const closeWalletModal = () => {
+    setIsWalletModalOpen(false);
   };
 
   // 말투 저장
@@ -585,6 +593,7 @@ function App() {
           myBlogId={myBlogId}
           myInfluencerUrl={myInfluencerUrl}
           openProfileModal={openProfileModal}
+          openWalletModal={openWalletModal}
           userGrade={userGrade}
           volts={volts}
           handleLogout={handleLogout}
@@ -730,6 +739,15 @@ function App() {
             </div>
           )}
 
+      {user && (
+        <WalletModal
+          isOpen={isWalletModalOpen}
+          onClose={closeWalletModal}
+          userId={user.id}
+          currentVolts={volts}
+        />
+      )}
+
       {/* ✨ 4. 관리자 페이지 모달 (Props 추가됨!) */}
       {showAdmin && user && (
         <Suspense fallback={
@@ -749,4 +767,3 @@ function App() {
     }
 
 export default App;
-

@@ -39,10 +39,30 @@ interface LogRow {
   created_at: string;
 }
 
+interface PaymentRequestRow {
+  id: string;
+  user_id: string;
+  amount: number;
+  bonus_volts: number;
+  depositor_name: string;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+}
+
+const PRODUCT_VOLTS_BY_AMOUNT: Record<number, number> = {
+  1000: 100,
+  10000: 1100,
+  30000: 3500,
+};
+
 export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: AdminPageProps) {
-  const [activeTab, setActiveTab] = useState<'users' | 'logs'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'logs' | 'payments'>('users');
   const [users, setUsers] = useState<ProfileRow[]>([]);
   const [logs, setLogs] = useState<LogRow[]>([]);
+  const [payments, setPayments] = useState<PaymentRequestRow[]>([]);
+  const [isPaymentsLoading, setIsPaymentsLoading] = useState(false);
+  const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(null);
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   
   // ✨ Toast 상태 관리
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -96,6 +116,31 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
     }
   }, [page]);
 
+  const fetchPayments = useCallback(async () => {
+    setIsPaymentsLoading(true);
+    const { data, error } = await supabase
+      .from('payment_requests')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('결제 요청 로딩 실패:', error);
+      addToast('결제 요청을 불러오지 못했습니다.', 'error');
+      setPayments([]);
+      setIsPaymentsLoading(false);
+      return;
+    }
+
+    const ordered = ((data as PaymentRequestRow[]) || []).sort((a, b) => {
+      const rank = (status: PaymentRequestRow['status']) => (status === 'pending' ? 0 : 1);
+      if (rank(a.status) !== rank(b.status)) return rank(a.status) - rank(b.status);
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+
+    setPayments(ordered);
+    setIsPaymentsLoading(false);
+  }, []);
+
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     fetchUsers();
@@ -105,7 +150,10 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
     if (activeTab === 'logs') {
       fetchLogs();
     }
-  }, [activeTab, fetchLogs]);
+    if (activeTab === 'payments') {
+      fetchPayments();
+    }
+  }, [activeTab, fetchLogs, fetchPayments]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
 // ⚡ 볼트 수정 함수 (낙관적 업데이트 적용: UI 먼저 변경 -> 서버 전송)
@@ -177,6 +225,99 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
     }
   };
 
+  const handleApprove = async (payment: PaymentRequestRow) => {
+    if (processingPaymentId) return;
+    setProcessingPaymentId(payment.id);
+
+    const approvedVolts = PRODUCT_VOLTS_BY_AMOUNT[payment.amount] ?? payment.bonus_volts;
+
+    const { error: statusError } = await supabase
+      .from('payment_requests')
+      .update({ status: 'approved', bonus_volts: approvedVolts })
+      .eq('id', payment.id)
+      .eq('status', 'pending');
+
+    if (statusError) {
+      addToast('승인 처리에 실패했습니다.', 'error');
+      setProcessingPaymentId(null);
+      return;
+    }
+
+    const targetUser = users.find((u) => u.id === payment.user_id);
+    let currentVolts = targetUser?.volts;
+    if (typeof currentVolts !== 'number') {
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('volts')
+        .eq('id', payment.user_id)
+        .single();
+      if (profileError || !profileData) {
+        addToast('유저 볼트 정보를 가져오지 못했습니다.', 'error');
+        setProcessingPaymentId(null);
+        await fetchPayments();
+        return;
+      }
+      currentVolts = profileData.volts;
+    }
+
+    const newVolts = currentVolts + approvedVolts;
+    const { error: voltsError } = await supabase
+      .from('profiles')
+      .update({ volts: newVolts })
+      .eq('id', payment.user_id);
+
+    if (voltsError) {
+      addToast('볼트 지급에 실패했습니다.', 'error');
+      setProcessingPaymentId(null);
+      await fetchPayments();
+      return;
+    }
+
+    const { error: logError } = await supabase.from('generation_logs').insert({
+      user_id: payment.user_id,
+      keyword: '무통장 입금 충전 승인',
+      theme: 'SYSTEM',
+      used_volts: -Math.abs(approvedVolts),
+      status: 'admin_charge_approved',
+      error_message: `Payment request ${payment.id} approved by admin`,
+    });
+
+    if (logError) {
+      addToast('로그 저장에 실패했습니다.', 'error');
+      setProcessingPaymentId(null);
+      await fetchPayments();
+      return;
+    }
+
+    setUsers((prev) => prev.map((u) => (u.id === payment.user_id ? { ...u, volts: newVolts } : u)));
+    addToast('충전 승인 완료');
+    setProcessingPaymentId(null);
+    await fetchPayments();
+    if (activeTab === 'logs') {
+      await fetchLogs();
+    }
+  };
+
+  const handleReject = async (payment: PaymentRequestRow) => {
+    if (processingPaymentId) return;
+    setProcessingPaymentId(payment.id);
+
+    const { error } = await supabase
+      .from('payment_requests')
+      .update({ status: 'rejected' })
+      .eq('id', payment.id);
+
+    if (error) {
+      addToast('거절 처리에 실패했습니다.', 'error');
+      setProcessingPaymentId(null);
+      return;
+    }
+
+    addToast('요청이 거절되었습니다.');
+    setProcessingPaymentId(null);
+    await fetchPayments();
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
       <div className="bg-white w-full max-w-6xl h-[85vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-fade-in-up relative">
@@ -200,6 +341,7 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
             <div className="flex bg-slate-800 rounded-lg p-1">
               <button onClick={() => setActiveTab('users')} className={`px-3 md:px-4 py-1.5 rounded-md text-xs md:text-sm font-bold transition-colors ${activeTab === 'users' ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'}`}>유저 관리</button>
               <button onClick={() => setActiveTab('logs')} className={`px-3 md:px-4 py-1.5 rounded-md text-xs md:text-sm font-bold transition-colors ${activeTab === 'logs' ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'}`}>사용 로그</button>
+              <button onClick={() => setActiveTab('payments')} className={`px-3 md:px-4 py-1.5 rounded-md text-xs md:text-sm font-bold transition-colors ${activeTab === 'payments' ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'}`}>💰 결제 관리</button>
             </div>
           </div>
           <button onClick={onClose} className="p-2 bg-slate-800 hover:bg-red-500 text-white rounded-full transition-colors"><X className="w-5 h-5" /></button>
@@ -421,10 +563,126 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
             </div>
           )}
 
+          {/* 3. 결제 관리 탭 */}
+          {activeTab === 'payments' && (
+            <div className="space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <h3 className="text-lg font-bold text-slate-700">무통장 입금 요청 관리</h3>
+                <div className="flex w-full md:w-auto items-center gap-2">
+                  <div className="flex p-1 bg-slate-200/60 rounded-xl overflow-x-auto hide-scrollbar flex-1 md:flex-none">
+                    {[
+                      { id: 'all', label: '전체' },
+                      { id: 'pending', label: '대기' },
+                      { id: 'approved', label: '승인' },
+                      { id: 'rejected', label: '거절' },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setPaymentFilter(tab.id as 'all' | 'pending' | 'approved' | 'rejected')}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${
+                          paymentFilter === tab.id ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={fetchPayments} className="p-2 bg-white border rounded-lg hover:bg-slate-50 shrink-0">
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                <table className="w-full min-w-[920px] text-left text-sm">
+                  <thead className="bg-slate-100 text-xs font-bold uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">요청 일시</th>
+                      <th className="px-4 py-3">입금자명</th>
+                      <th className="px-4 py-3">입금액(원)</th>
+                      <th className="px-4 py-3">지급 볼트(V)</th>
+                      <th className="px-4 py-3">유저 이메일</th>
+                      <th className="px-4 py-3">상태</th>
+                      <th className="px-4 py-3 text-right">관리</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {isPaymentsLoading ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-8 text-center text-sm font-semibold text-slate-400">
+                          결제 요청을 불러오는 중...
+                        </td>
+                      </tr>
+                    ) : payments.filter((payment) => paymentFilter === 'all' || payment.status === paymentFilter).length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-8 text-center text-sm font-semibold text-slate-400">
+                          선택한 상태의 결제 요청이 없습니다.
+                        </td>
+                      </tr>
+                    ) : (
+                      payments
+                        .filter((payment) => paymentFilter === 'all' || payment.status === paymentFilter)
+                        .map((payment) => {
+                        const user = users.find((u) => u.id === payment.user_id);
+                        const email = user?.email || `${payment.user_id.slice(0, 8)}...`;
+                        const isPending = payment.status === 'pending';
+                        const displayVolts = PRODUCT_VOLTS_BY_AMOUNT[payment.amount] ?? payment.bonus_volts;
+
+                        return (
+                          <tr
+                            key={payment.id}
+                            className={`transition-colors ${isPending ? 'bg-violet-50/40 hover:bg-violet-50' : 'hover:bg-slate-50'}`}
+                          >
+                            <td className="px-4 py-3 text-xs text-slate-500">{new Date(payment.created_at).toLocaleString()}</td>
+                            <td className="px-4 py-3 font-bold text-slate-800">{payment.depositor_name}</td>
+                            <td className="px-4 py-3 font-bold text-slate-800">₩ {payment.amount.toLocaleString()}</td>
+                            <td className="px-4 py-3 font-bold text-purple-600">{displayVolts.toLocaleString()} V</td>
+                            <td className="px-4 py-3 text-xs text-slate-600">{email}</td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${
+                                  payment.status === 'pending'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : payment.status === 'approved'
+                                      ? 'bg-green-100 text-green-700'
+                                      : 'bg-red-100 text-red-700'
+                                }`}
+                              >
+                                {payment.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  onClick={() => handleApprove(payment)}
+                                  disabled={!isPending || processingPaymentId === payment.id}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-green-100 px-3 py-1.5 text-xs font-bold text-green-700 hover:bg-green-200 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                  승인
+                                </button>
+                                <button
+                                  onClick={() => handleReject(payment)}
+                                  disabled={!isPending || processingPaymentId === payment.id}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-red-100 px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  거절
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </div>
   );
 }
-
-
