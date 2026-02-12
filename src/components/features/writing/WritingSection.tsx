@@ -203,14 +203,26 @@ export default function WritingSection({
     }
 
     setLoadingMessageIndex(0);
+    const lastIndex = loadingMessages.length - 1;
     const timer = setInterval(() => {
-      setLoadingMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+      setLoadingMessageIndex((prev) => Math.min(prev + 1, lastIndex));
     }, 3000);
 
     return () => clearInterval(timer);
   }, [isLoading, loadingMessages]);
 
+  useEffect(() => {
+    if (!isLoading) return;
+    if (step === 'writing') {
+      setLoadingMessageIndex((prev) => Math.max(prev, Math.min(2, loadingMessages.length - 1)));
+    }
+  }, [isLoading, step, loadingMessages.length]);
+
   const currentLoadingMessage = loadingMessages[loadingMessageIndex] ?? '';
+  const displayLoadingMessage =
+    loadingMessageIndex >= loadingMessages.length - 1
+      ? '최종 문장 정리 중...'
+      : currentLoadingMessage;
   const totalArchivePages = Math.max(1, Math.ceil(history.length / ARCHIVE_PAGE_SIZE));
   const displayedHistory =
     historyView === 'recent'
@@ -717,7 +729,7 @@ export default function WritingSection({
                     <h3 className="text-xl font-bold text-slate-700">
                       {step === 'searching' ? '스토리텔링 초안 준비 중...' : 'AI 문장 다듬는 중...'}
                     </h3>
-                    <p className="text-slate-500 text-sm font-semibold">{currentLoadingMessage}</p>
+                    <p className="text-slate-500 text-sm font-semibold">{displayLoadingMessage}</p>
                     <p className="text-slate-400 text-xs">
                       단계 {loadingMessageIndex + 1} / {loadingMessages.length}
                     </p>

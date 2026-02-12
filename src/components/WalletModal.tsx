@@ -221,9 +221,9 @@ export default function WalletModal({ isOpen, onClose, userId, currentVolts }: W
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] bg-black/50 p-4">
-      <div className="mx-auto flex h-full w-full max-w-5xl items-center justify-center">
-        <div className="w-full max-w-4xl rounded-3xl bg-white shadow-2xl">
+    <div className="fixed inset-0 z-[120] overflow-y-auto overscroll-contain bg-black/50 p-3 md:p-4">
+      <div className="mx-auto flex min-h-full w-full max-w-5xl items-end justify-center md:items-center">
+        <div className="flex w-full max-w-4xl max-h-[92svh] md:max-h-[90vh] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
           <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4 md:px-7 md:py-6">
             <div>
               <p className="flex items-center gap-2 text-sm font-semibold text-slate-500">
@@ -245,7 +245,7 @@ export default function WalletModal({ isOpen, onClose, userId, currentVolts }: W
             </button>
           </div>
 
-          <div className="px-5 pt-4 md:px-7">
+          <div className="shrink-0 px-5 pt-4 md:px-7">
             <div className="grid grid-cols-2 rounded-2xl bg-slate-100 p-1">
               <button
                 type="button"
@@ -270,7 +270,7 @@ export default function WalletModal({ isOpen, onClose, userId, currentVolts }: W
             </div>
           </div>
 
-          <div className="px-5 pb-6 pt-5 md:px-7 md:pb-7">
+          <div className="flex-1 overflow-y-auto px-5 pb-6 pt-5 md:px-7 md:pb-7">
             {activeTab === 'store' ? (
               viewMode === 'list' ? (
                 <div className="flex flex-col gap-4 md:flex-row">
