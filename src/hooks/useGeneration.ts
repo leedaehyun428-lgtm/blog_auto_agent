@@ -33,7 +33,7 @@ interface UseGenerationParams {
   volts: number;
   handleLogin: () => void;
   requestConfirm: (options: { title: string; message: string; confirmText?: string; cancelText?: string; danger?: boolean }) => Promise<boolean>;
-  saveToHistory: (keyword: string, content: string) => Promise<void>;
+  saveToHistory: (keyword: string, content: string, toneGuide?: string) => Promise<void>;
   setVolts: Dispatch<SetStateAction<number>>;
   setIsLoading: (value: boolean) => void;
   setResult: (value: string) => void;
@@ -53,6 +53,8 @@ interface UseGenerationParams {
 }
 
 const PAYMENT_ERROR = '볼트가 부족하거나 결제 중 오류가 발생했습니다. 충전이 필요할 수 있습니다.';
+const GENERATION_TIMEOUT_MS = 60000;
+const GENERATION_TIMEOUT_ERROR = '생성 요청 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.';
 const MODE_COST: Record<'basic' | 'pro', number> = {
   basic: 20,
   pro: 100,
@@ -73,6 +75,21 @@ function getDetailedError(error: unknown): string {
     if (typeof message === 'string') return message;
   }
   return getErrorMessage(error);
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
 export function useGeneration({
@@ -178,6 +195,7 @@ export function useGeneration({
     setIsLoading(true);
     setResult('');
     setCopyStatus('idle');
+    let isVoltsDeducted = false;
 
     try {
       const { data: isSuccess, error: payError } = await supabase
@@ -187,28 +205,37 @@ export function useGeneration({
         throw new Error(PAYMENT_ERROR);
       }
 
+      isVoltsDeducted = true;
       setVolts((prev) => prev - cost);
 
       let searchData = '';
       if (mode === 'pro') {
         setStep('searching');
-        searchData = await searchInfo(keyword, mode, selectedTheme);
+        searchData = await withTimeout(
+          searchInfo(keyword, mode, selectedTheme),
+          GENERATION_TIMEOUT_MS,
+          GENERATION_TIMEOUT_ERROR,
+        );
       } else {
         searchData = buildBasicContext(keyword, selectedTheme);
       }
 
       setStep('writing');
-      const blogPost = await generateBlogPost(
-        keyword,
-        searchData,
-        selectedTheme,
-        useGuide ? guide : undefined,
+      const blogPost = await withTimeout(
+        generateBlogPost(
+          keyword,
+          searchData,
+          selectedTheme,
+          useGuide ? guide : undefined,
+        ),
+        GENERATION_TIMEOUT_MS,
+        GENERATION_TIMEOUT_ERROR,
       );
 
       setResult(blogPost);
       setResultMode(mode);
       setStep('done');
-      await saveToHistory(keyword, blogPost);
+      await saveToHistory(keyword, blogPost, useGuide ? guide : undefined);
 
       await supabase.from('generation_logs').insert({
         user_id: user.id,
@@ -221,24 +248,29 @@ export function useGeneration({
     } catch (error: unknown) {
       console.error(error);
       const message = getErrorMessage(error);
+      const detailedError = getDetailedError(error);
 
-      if (message !== PAYMENT_ERROR) {
-        await supabase.rpc('refund_volts', { row_id: user.id, amount: cost });
-        setVolts((prev) => prev + cost);
+      if (message !== PAYMENT_ERROR && isVoltsDeducted) {
+        const { data: refundSuccess, error: refundError } = await supabase
+          .rpc('refund_volts', { row_id: user.id, amount: cost });
 
-        notify('info', `오류로 차감된 ${cost} 볼트가 자동 환불되었습니다: ${message}`);
+        if (!refundError && refundSuccess) {
+          setVolts((prev) => prev + cost);
 
-        const detailedError = getDetailedError(error);
+          await supabase.from('generation_logs').insert({
+            user_id: user.id,
+            keyword: '환불 완료(자동)',
+            theme: selectedTheme,
+            status: 'refunded',
+            used_volts: cost,
+            error_message: detailedError,
+          });
 
-        await supabase.from('generation_logs').insert({
-          user_id: user.id,
-          keyword,
-          status: 'refunded',
-          used_volts: cost,
-          error_message: detailedError,
-        });
-
-        notify('error', `오류 발생: ${detailedError}`);
+          notify('error', '생성 중 오류가 발생하여 볼트가 자동 환불되었습니다. 다시 시도해 주세요.');
+        } else {
+          console.error('자동 환불 실패:', refundError);
+          notify('error', '생성 중 오류가 발생했고 환불 처리에 실패했습니다. 관리자에게 문의해 주세요.');
+        }
       } else {
         notify('error', message);
       }

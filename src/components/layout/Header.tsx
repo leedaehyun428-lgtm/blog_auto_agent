@@ -17,6 +17,8 @@ import {
   Zap,
   ShieldAlert,
   ChevronRight,
+  Megaphone,
+  CircleHelp,
 } from 'lucide-react';
 
 interface ThemeStyles {
@@ -42,11 +44,12 @@ interface HeaderProps {
   menuRef: RefObject<HTMLDivElement | null>;
   isAdmin: boolean;
   setShowAdmin: (value: boolean) => void;
-  setMode: (value: GenerateMode) => void;
   exportHistory: () => void;
   fileInputRef: RefObject<HTMLInputElement | null>;
   importHistory: (event: ChangeEvent<HTMLInputElement>) => void;
   clearHistory: () => void;
+  openNoticeModal: () => void;
+  openGuideModal: () => void;
   handleLogin: () => void;
   handleKakaoLogin: () => void;
   isMobileLoginOpen: boolean;
@@ -70,11 +73,12 @@ export default function Header({
   menuRef,
   isAdmin,
   setShowAdmin,
-  setMode,
   exportHistory,
   fileInputRef,
   importHistory,
   clearHistory,
+  openNoticeModal,
+  openGuideModal,
   handleLogin,
   handleKakaoLogin,
   isMobileLoginOpen,
@@ -147,7 +151,7 @@ export default function Header({
               <button
                 type="button"
                 onClick={openWalletModal}
-                className="group flex items-center gap-2 pl-3 pr-1.5 py-1.5 bg-yellow-50/80 hover:bg-yellow-100 border border-yellow-200 rounded-full transition-all cursor-pointer"
+                className="group flex items-center gap-2 pl-3 pr-1.5 py-1.5 bg-yellow-50/80 hover:bg-yellow-100 border border-yellow-200 rounded-full transition-all hover:scale-105 cursor-pointer"
                 title="볼트 충전하기"
               >
                 <div className="flex items-center gap-1.5">
@@ -242,10 +246,10 @@ export default function Header({
                             openWalletModal();
                             setIsMenuOpen(false);
                           }}
-                          className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 shadow-sm hover:bg-yellow-100 transition-colors"
+                          className="group w-full flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg text-white shadow-md bg-gradient-to-r from-violet-500 to-indigo-500 hover:from-violet-600 hover:to-indigo-600 transition-all active:scale-95"
                         >
-                          <Zap className="w-4 h-4" />
-                          볼트 충전하기
+                          <Zap className="w-4 h-4 text-white/90 group-hover:scale-110 transition-transform" />
+                          ⚡ 볼트 충전소
                         </button>
                       </div>
                     </div>
@@ -287,32 +291,44 @@ export default function Header({
                       </button>
                     </div>
 
-                    <div className="px-4 py-3 bg-white">
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Settings</p>
-                      <div className="w-full rounded-xl bg-slate-100 p-1 grid grid-cols-2 gap-1">
-                        <button
-                          onClick={() => setMode('basic')}
-                          className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors ${isBasicMode ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                          ⚡ 일반 모드 (20V)
-                        </button>
-                        <button
-                          onClick={() => setMode('pro')}
-                          className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors ${!isBasicMode ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                          🚀 고성능 모드 (100V)
-                        </button>
+                    <div className="px-4 py-3 bg-white space-y-3">
+                      <div>
+                        <p className="mb-2 px-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">알림/가이드</p>
+                        <div className="space-y-1">
+                          <button
+                            onClick={() => {
+                              openNoticeModal();
+                              setIsMenuOpen(false);
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 text-sm text-slate-600"
+                          >
+                            <Megaphone className="w-4 h-4 text-slate-400" /> 공지사항
+                          </button>
+                          <button
+                            onClick={() => {
+                              openGuideModal();
+                              setIsMenuOpen(false);
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 text-sm text-slate-600"
+                          >
+                            <CircleHelp className="w-4 h-4 text-slate-400" /> 사용법
+                          </button>
+                        </div>
                       </div>
 
-                      <div className="my-1 border-t border-slate-100" />
+                      <div className="border-t border-slate-100 pt-3">
+                        <p className="mb-2 px-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">기록 관리</p>
+                        <div className="space-y-1">
+                          <button onClick={exportHistory} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 text-sm text-slate-600"><DownloadCloud className="w-4 h-4 text-slate-400" /> 기록 백업하기</button>
+                          <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 text-sm text-slate-600"><UploadCloud className="w-4 h-4 text-slate-400" /> 기록 복원하기</button>
+                          <input type="file" ref={fileInputRef} onChange={importHistory} className="hidden" accept=".json" />
+                        </div>
+                      </div>
 
-                      <button onClick={exportHistory} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 text-sm text-slate-600"><DownloadCloud className="w-4 h-4 text-slate-400" /> 기록 백업하기</button>
-                      <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 text-sm text-slate-600"><UploadCloud className="w-4 h-4 text-slate-400" /> 기록 복원하기</button>
-                      <input type="file" ref={fileInputRef} onChange={importHistory} className="hidden" accept=".json" />
-
-                      <div className="my-1 border-t border-slate-100" />
-
-                      <button onClick={clearHistory} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 text-red-500 text-sm"><Trash2 className="w-4 h-4" /> 기록 전체 삭제</button>
+                      <div className="border-t border-slate-100 pt-3">
+                        <p className="mb-2 px-1 text-[11px] font-bold uppercase tracking-wider text-amber-500">주의 기능</p>
+                        <button onClick={clearHistory} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-red-50/70 hover:bg-red-100 text-red-600 text-sm font-semibold"><Trash2 className="w-4 h-4" /> 기록 전체 삭제</button>
+                      </div>
                     </div>
                   </motion.div>
                 )}

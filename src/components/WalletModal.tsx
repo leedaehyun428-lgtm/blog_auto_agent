@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { Wallet, History, Zap, X, CreditCard, ArrowLeft, Copy } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
@@ -166,7 +166,7 @@ export default function WalletModal({ isOpen, onClose, userId, currentVolts }: W
       setIsHistoryLoading(false);
     };
 
-    fetchHistoryData();
+    void fetchHistoryData();
 
     return () => {
       isMounted = false;
@@ -189,6 +189,7 @@ export default function WalletModal({ isOpen, onClose, userId, currentVolts }: W
 
   const submitPaymentRequest = async () => {
     if (!selectedItem) return;
+
     const trimmedName = depositorName.trim();
     if (!trimmedName) {
       alert('입금자명을 입력해 주세요.');
@@ -196,17 +197,19 @@ export default function WalletModal({ isOpen, onClose, userId, currentVolts }: W
     }
 
     setIsSubmitting(true);
-    const { error } = await supabase.from('payment_requests').insert({
-      user_id: userId,
-      amount: selectedItem.price,
-      bonus_volts: selectedItem.volts,
-      depositor_name: trimmedName,
-      status: 'pending',
-    });
+    const { error } = await supabase
+      .from('payment_requests')
+      .insert({
+        user_id: userId,
+        amount: selectedItem.price,
+        bonus_volts: selectedItem.volts,
+        depositor_name: trimmedName,
+        status: 'pending',
+      });
     setIsSubmitting(false);
 
     if (error) {
-      alert(`신청 실패: ${error.message}`);
+      alert(`요청 실패: ${error.message}`);
       return;
     }
 
@@ -322,8 +325,7 @@ export default function WalletModal({ isOpen, onClose, userId, currentVolts }: W
                     <div className="space-y-4">
                       <div className="rounded-xl bg-violet-50 p-4">
                         <p className="text-sm text-slate-700">
-                          아래 계좌로{' '}
-                          <span className="font-bold text-violet-700">{selectedItem.price.toLocaleString()}원</span>을 입금해 주세요.
+                          아래 계좌로 <span className="font-bold text-violet-700">{selectedItem.price.toLocaleString()}원</span>을 입금해 주세요.
                         </p>
                         <p className="mt-2 text-sm font-semibold text-slate-800">{ACCOUNT_INFO}</p>
                         <button
@@ -356,7 +358,7 @@ export default function WalletModal({ isOpen, onClose, userId, currentVolts }: W
                         disabled={isSubmitting}
                         className="w-full rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-violet-300"
                       >
-                        {isSubmitting ? '신청 중...' : '입금 완료 / 신청하기'}
+                        {isSubmitting ? '요청 중...' : '입금 완료 / 신청하기'}
                       </button>
                     </div>
                   )}
@@ -391,7 +393,7 @@ export default function WalletModal({ isOpen, onClose, userId, currentVolts }: W
                               {formatDate(item.created_at)} · {item.depositor_name}
                             </p>
                             <p className="text-xs text-slate-500">
-                              입금액 ₩{item.amount.toLocaleString()} / 지급 {item.bonus_volts.toLocaleString()}V
+                              입금액 {item.amount.toLocaleString()}원 / 지급 {item.bonus_volts.toLocaleString()}V
                             </p>
                           </div>
                           <span
@@ -453,4 +455,3 @@ export default function WalletModal({ isOpen, onClose, userId, currentVolts }: W
     </div>
   );
 }
-

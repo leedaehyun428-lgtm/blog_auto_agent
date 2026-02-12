@@ -49,6 +49,14 @@ interface PaymentRequestRow {
   created_at: string;
 }
 
+interface NoticeRow {
+  id: string;
+  title: string;
+  content: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 const PRODUCT_VOLTS_BY_AMOUNT: Record<number, number> = {
   1000: 100,
   10000: 1100,
@@ -56,13 +64,17 @@ const PRODUCT_VOLTS_BY_AMOUNT: Record<number, number> = {
 };
 
 export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: AdminPageProps) {
-  const [activeTab, setActiveTab] = useState<'users' | 'logs' | 'payments'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'logs' | 'payments' | 'notices'>('users');
   const [users, setUsers] = useState<ProfileRow[]>([]);
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [payments, setPayments] = useState<PaymentRequestRow[]>([]);
+  const [notices, setNotices] = useState<NoticeRow[]>([]);
   const [isPaymentsLoading, setIsPaymentsLoading] = useState(false);
+  const [isNoticesLoading, setIsNoticesLoading] = useState(false);
   const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(null);
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [newNoticeTitle, setNewNoticeTitle] = useState('');
+  const [newNoticeContent, setNewNoticeContent] = useState('');
   
   // ✨ Toast 상태 관리
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -141,6 +153,25 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
     setIsPaymentsLoading(false);
   }, []);
 
+  const fetchNotices = useCallback(async () => {
+    setIsNoticesLoading(true);
+    const { data, error } = await supabase
+      .from('notices')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('공지사항 로딩 실패:', error);
+      addToast('공지사항을 불러오지 못했습니다.', 'error');
+      setNotices([]);
+      setIsNoticesLoading(false);
+      return;
+    }
+
+    setNotices((data as NoticeRow[]) || []);
+    setIsNoticesLoading(false);
+  }, []);
+
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     fetchUsers();
@@ -153,7 +184,10 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
     if (activeTab === 'payments') {
       fetchPayments();
     }
-  }, [activeTab, fetchLogs, fetchPayments]);
+    if (activeTab === 'notices') {
+      fetchNotices();
+    }
+  }, [activeTab, fetchLogs, fetchPayments, fetchNotices]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
 // ⚡ 볼트 수정 함수 (낙관적 업데이트 적용: UI 먼저 변경 -> 서버 전송)
@@ -318,6 +352,49 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
     await fetchPayments();
   };
 
+  const handleCreateNotice = async () => {
+    const title = newNoticeTitle.trim();
+    const content = newNoticeContent.trim();
+
+    if (!title || !content) {
+      addToast('공지 제목과 내용을 입력해 주세요.', 'error');
+      return;
+    }
+
+    const { error } = await supabase.from('notices').insert({
+      title,
+      content,
+      is_active: true,
+    });
+
+    if (error) {
+      console.error('공지 생성 실패:', error);
+      addToast('공지 등록에 실패했습니다.', 'error');
+      return;
+    }
+
+    addToast('공지사항이 등록되었습니다.');
+    setNewNoticeTitle('');
+    setNewNoticeContent('');
+    await fetchNotices();
+  };
+
+  const handleToggleNoticeActive = async (notice: NoticeRow) => {
+    const { error } = await supabase
+      .from('notices')
+      .update({ is_active: !notice.is_active })
+      .eq('id', notice.id);
+
+    if (error) {
+      console.error('공지 활성화 변경 실패:', error);
+      addToast('공지 상태 변경에 실패했습니다.', 'error');
+      return;
+    }
+
+    addToast(notice.is_active ? '공지 비활성화 완료' : '공지 활성화 완료');
+    await fetchNotices();
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
       <div className="bg-white w-full max-w-6xl h-[85vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-fade-in-up relative">
@@ -342,6 +419,7 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
               <button onClick={() => setActiveTab('users')} className={`px-3 md:px-4 py-1.5 rounded-md text-xs md:text-sm font-bold transition-colors ${activeTab === 'users' ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'}`}>유저 관리</button>
               <button onClick={() => setActiveTab('logs')} className={`px-3 md:px-4 py-1.5 rounded-md text-xs md:text-sm font-bold transition-colors ${activeTab === 'logs' ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'}`}>사용 로그</button>
               <button onClick={() => setActiveTab('payments')} className={`px-3 md:px-4 py-1.5 rounded-md text-xs md:text-sm font-bold transition-colors ${activeTab === 'payments' ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'}`}>💰 결제 관리</button>
+              <button onClick={() => setActiveTab('notices')} className={`px-3 md:px-4 py-1.5 rounded-md text-xs md:text-sm font-bold transition-colors ${activeTab === 'notices' ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'}`}>📢 공지사항 관리</button>
             </div>
           </div>
           <button onClick={onClose} className="p-2 bg-slate-800 hover:bg-red-500 text-white rounded-full transition-colors"><X className="w-5 h-5" /></button>
@@ -674,6 +752,95 @@ export default function AdminPage({ onClose, currentUserId, onMyGradeChanged }: 
                           </tr>
                         );
                       })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'notices' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-slate-700">공지사항 관리</h3>
+                <button onClick={fetchNotices} className="p-2 bg-white border rounded-lg hover:bg-slate-50">
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+                <input
+                  type="text"
+                  value={newNoticeTitle}
+                  onChange={(e) => setNewNoticeTitle(e.target.value)}
+                  placeholder="공지 제목"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-slate-300 focus:bg-white"
+                />
+                <textarea
+                  value={newNoticeContent}
+                  onChange={(e) => setNewNoticeContent(e.target.value)}
+                  placeholder="공지 내용"
+                  className="h-32 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-slate-300 focus:bg-white"
+                />
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleCreateNotice}
+                    className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800"
+                  >
+                    공지 등록
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                <table className="w-full min-w-[760px] text-left text-sm">
+                  <thead className="bg-slate-100 text-xs font-bold uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">작성일</th>
+                      <th className="px-4 py-3">제목</th>
+                      <th className="px-4 py-3">내용</th>
+                      <th className="px-4 py-3">상태</th>
+                      <th className="px-4 py-3 text-right">관리</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {isNoticesLoading ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-center text-sm font-semibold text-slate-400">
+                          공지사항을 불러오는 중...
+                        </td>
+                      </tr>
+                    ) : notices.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-center text-sm font-semibold text-slate-400">
+                          등록된 공지사항이 없습니다.
+                        </td>
+                      </tr>
+                    ) : (
+                      notices.map((notice) => (
+                        <tr key={notice.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 text-xs text-slate-500">{new Date(notice.created_at).toLocaleString()}</td>
+                          <td className="px-4 py-3 font-bold text-slate-800">{notice.title}</td>
+                          <td className="px-4 py-3 text-slate-600">{notice.content}</td>
+                          <td className="px-4 py-3">
+                            <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${notice.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-600'}`}>
+                              {notice.is_active ? 'ACTIVE' : 'INACTIVE'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => handleToggleNoticeActive(notice)}
+                              className={`rounded-lg px-3 py-1.5 text-xs font-bold ${
+                                notice.is_active
+                                  ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                  : 'bg-green-100 text-green-700 hover:bg-green-200'
+                              }`}
+                            >
+                              {notice.is_active ? '비활성화' : '활성화'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))
                     )}
                   </tbody>
                 </table>

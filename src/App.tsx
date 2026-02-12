@@ -1,10 +1,12 @@
 ﻿import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { X, Utensils, Plane, Shirt, Landmark, Smile, Package, Sparkles } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import confetti from 'canvas-confetti';
 import { type ThemeType } from './api';
 import { supabase } from './supabaseClient';
 import Header from './components/layout/Header';
 import WalletModal from './components/WalletModal';
+import GuideModal from './components/GuideModal';
 import Modal from './components/common/Modal';
 import Toast, { type ToastType } from './components/common/Toast';
 import { useAuth } from './hooks/useAuth';
@@ -15,6 +17,14 @@ interface PromptItem {
   id: string;
   title: string;
   system_prompt: string;
+}
+
+interface NoticeRow {
+  id: string;
+  title: string;
+  content: string;
+  is_active: boolean;
+  created_at: string;
 }
 
 interface ConfirmOptions {
@@ -37,6 +47,7 @@ interface ConfirmState {
 const AdminPage = lazy(() => import('./AdminPage'));
 const WritingSection = lazy(() => import('./components/features/writing/WritingSection'));
 const SPLASH_FADE_MS = 450;
+const NOTICE_HIDE_UNTIL_KEY = 'briter_notice_hide_until';
 
 const THEMES: { id: ThemeType; label: string; icon: LucideIcon }[] = [
   { id: 'restaurant', label: '맛집/카페', icon: Utensils },
@@ -54,6 +65,7 @@ const DEFAULT_PROMPTS: PromptItem[] = [
 ];
 
 function App() {
+  const COST_PER_GENERATION = 20;
   // --- [상태 관리: State] ---
   const [keyword, setKeyword] = useState('');
   const [keywordError, setKeywordError] = useState('');
@@ -114,6 +126,13 @@ function App() {
   const [myInfluencerUrl, setMyInfluencerUrl] = useState('');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false); // 설정창 열기/닫기
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
+  const [isNoticeListOpen, setIsNoticeListOpen] = useState(false);
+  const [isInitialNoticeOpen, setIsInitialNoticeOpen] = useState(false);
+  const [noticeDismissForDay, setNoticeDismissForDay] = useState(false);
+  const [activeNotice, setActiveNotice] = useState<NoticeRow | null>(null);
+  const [noticeList, setNoticeList] = useState<NoticeRow[]>([]);
+  const [isNoticeLoading, setIsNoticeLoading] = useState(false);
 
   // [신규] 모달 안에서만 쓸 '임시 수정용' 변수
   const [editBlogId, setEditBlogId] = useState('');
@@ -134,6 +153,11 @@ function App() {
   const [isBootLoading, setIsBootLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   const [isSplashVisible, setIsSplashVisible] = useState(true);
+  const [celebrationToast, setCelebrationToast] = useState<{ id: number; message: string } | null>(null);
+  const celebrationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevVoltsRef = useRef<number | null>(null);
+  const skipNextChargeCelebrationRef = useRef(false);
+  const hasVoltsBaselineRef = useRef(false);
 
 
   // 테마 스타일 정의
@@ -165,6 +189,81 @@ function App() {
 
   const notify = (type: ToastType, message: string) => {
     setToast({ type, message });
+  };
+
+  const fetchNoticeList = async () => {
+    setIsNoticeLoading(true);
+    const { data, error } = await supabase
+      .from('notices')
+      .select('*')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('공지사항 목록 로딩 실패:', error);
+      setNoticeList([]);
+      setIsNoticeLoading(false);
+      return;
+    }
+
+    setNoticeList((data as NoticeRow[]) || []);
+    setIsNoticeLoading(false);
+  };
+
+  const fetchInitialNotice = async () => {
+    const hiddenUntilRaw = localStorage.getItem(NOTICE_HIDE_UNTIL_KEY);
+    if (hiddenUntilRaw) {
+      const hiddenUntil = Number(hiddenUntilRaw);
+      if (!Number.isNaN(hiddenUntil) && Date.now() < hiddenUntil) return;
+    }
+
+    const { data, error } = await supabase
+      .from('notices')
+      .select('*')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return;
+
+    setActiveNotice(data as NoticeRow);
+    setNoticeDismissForDay(false);
+    setIsInitialNoticeOpen(true);
+  };
+  const launchConfetti = (variant: 'welcome' | 'charge') => {
+    if (variant === 'welcome') {
+      confetti({
+        particleCount: 110,
+        spread: 78,
+        startVelocity: 45,
+        origin: { y: 0.62 },
+      });
+      return;
+    }
+    confetti({
+      particleCount: 180,
+      spread: 95,
+      startVelocity: 52,
+      origin: { x: 0.2, y: 0.62 },
+    });
+    confetti({
+      particleCount: 180,
+      spread: 95,
+      startVelocity: 52,
+      origin: { x: 0.8, y: 0.62 },
+    });
+  };
+  const showCelebration = (message: string, variant: 'welcome' | 'charge') => {
+    launchConfetti(variant);
+    setCelebrationToast({ id: Date.now(), message });
+    if (celebrationTimeoutRef.current) {
+      clearTimeout(celebrationTimeoutRef.current);
+    }
+    celebrationTimeoutRef.current = setTimeout(() => {
+      setCelebrationToast(null);
+      celebrationTimeoutRef.current = null;
+    }, 3000);
   };
 
   const closeConfirm = (result: boolean) => {
@@ -281,6 +380,11 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    void fetchNoticeList();
+    void fetchInitialNotice();
+  }, []);
+
   // --------------- [데이터 가져오기 함수들 (Data Fetching)] ---------------
 
   // 1. 관리자 여부 체크
@@ -358,6 +462,17 @@ function App() {
             user_name: user.user_metadata.full_name || user.email?.split('@')[0],
           }).eq('id', user.id);
 
+          const { data: welcomeGranted, error: welcomeError } = await supabase.rpc(
+            'grant_welcome_volts_if_needed',
+            { row_id: user.id, bonus_amount: 200 },
+          );
+          if (welcomeError) {
+            console.error('웰컴 볼트 지급 처리 실패:', welcomeError);
+          } else if (welcomeGranted) {
+            skipNextChargeCelebrationRef.current = true;
+            showCelebration('웰컴 보너스 200V 지급!', 'welcome');
+          }
+
           await Promise.all([
             fetchHistory(),
             checkAdmin(user.id),
@@ -406,6 +521,67 @@ function App() {
     };
   }, [loading]);
 
+  useEffect(() => {
+    if (!user) {
+      prevVoltsRef.current = null;
+      hasVoltsBaselineRef.current = false;
+      return;
+    }
+
+    const syncVolts = async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('volts')
+        .eq('id', user.id)
+        .single();
+
+      if (!error && data && typeof data.volts === 'number') {
+        if (!hasVoltsBaselineRef.current) {
+          // 로그인 직후/새 세션에서는 기준값만 세팅하고 축하 트리거를 막는다.
+          prevVoltsRef.current = data.volts;
+          hasVoltsBaselineRef.current = true;
+          setVolts(data.volts);
+          return;
+        }
+        setVolts((prev) => (prev === data.volts ? prev : data.volts));
+      }
+    };
+
+    void syncVolts();
+    const intervalId = setInterval(syncVolts, 10000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || loading || !hasVoltsBaselineRef.current) return;
+
+    if (prevVoltsRef.current === null) {
+      prevVoltsRef.current = volts;
+      return;
+    }
+
+    if (volts > prevVoltsRef.current) {
+      if (skipNextChargeCelebrationRef.current) {
+        skipNextChargeCelebrationRef.current = false;
+      } else {
+        showCelebration('충전이 완료되었습니다!', 'charge');
+      }
+    }
+
+    prevVoltsRef.current = volts;
+  }, [volts, user, loading]);
+
+  useEffect(() => {
+    return () => {
+      if (celebrationTimeoutRef.current) {
+        clearTimeout(celebrationTimeoutRef.current);
+      }
+    };
+  }, []);
+
 
   // --------------- [핸들러 함수들 (Handlers)] ---------------
   const handleLogout = async () => {
@@ -434,6 +610,35 @@ function App() {
   };
   const closeWalletModal = () => {
     setIsWalletModalOpen(false);
+  };
+  const openNoticeModal = async () => {
+    setIsNoticeListOpen(true);
+    if (noticeList.length === 0) {
+      await fetchNoticeList();
+    }
+  };
+  const closeInitialNotice = () => {
+    if (noticeDismissForDay) {
+      const oneDayMs = 24 * 60 * 60 * 1000;
+      localStorage.setItem(NOTICE_HIDE_UNTIL_KEY, String(Date.now() + oneDayMs));
+    }
+    setIsInitialNoticeOpen(false);
+  };
+  const handleGenerateWithGuard = async () => {
+    if (!user) {
+      await handleGenerate();
+      return;
+    }
+
+    if (volts < COST_PER_GENERATION) {
+      const shouldOpenStore = window.confirm('볼트가 부족합니다. 충전소로 이동하시겠습니까?');
+      if (shouldOpenStore) {
+        setIsWalletModalOpen(true);
+      }
+      return;
+    }
+
+    await handleGenerate();
   };
 
   // 말투 저장
@@ -602,11 +807,12 @@ function App() {
           menuRef={menuRef}
           isAdmin={isAdmin}
           setShowAdmin={setShowAdmin}
-          setMode={setMode}
           exportHistory={exportHistory}
           fileInputRef={fileInputRef}
           importHistory={importHistory}
           clearHistory={clearHistory}
+          openNoticeModal={openNoticeModal}
+          openGuideModal={() => setIsGuideModalOpen(true)}
           handleLogin={handleLogin}
           handleKakaoLogin={handleKakaoLogin}
           isMobileLoginOpen={isMobileLoginOpen}
@@ -628,6 +834,7 @@ function App() {
             isLoading={isLoading}
             isAnalyzing={isAnalyzing}
             mode={mode}
+            setMode={setMode}
             resultMode={resultMode}
             isMobileView={isMobileView}
             isEditing={isEditing}
@@ -639,7 +846,7 @@ function App() {
             themeStyles={themeStyles}
             themes={THEMES}
             handleAnalyze={handleAnalyze}
-            handleGenerate={handleGenerate}
+            handleGenerate={handleGenerateWithGuard}
             analysisData={analysisData}
             exposureGuide={exposureGuide}
             useGuide={useGuide}
@@ -682,6 +889,13 @@ function App() {
             message={toast.message}
             onClose={() => setToast(null)}
           />
+        </div>
+      )}
+      {celebrationToast && (
+        <div className="pointer-events-none fixed top-5 left-1/2 z-[130] -translate-x-1/2 px-4">
+          <div className="animate-fade-in-up rounded-2xl border border-white/70 bg-white/90 px-5 py-3 text-sm font-bold text-slate-800 shadow-xl backdrop-blur-sm">
+            {celebrationToast.message}
+          </div>
         </div>
       )}
 
@@ -739,14 +953,83 @@ function App() {
             </div>
           )}
 
-      {user && (
-        <WalletModal
-          isOpen={isWalletModalOpen}
-          onClose={closeWalletModal}
-          userId={user.id}
-          currentVolts={volts}
-        />
-      )}
+      <WalletModal
+        isOpen={isWalletModalOpen}
+        onClose={() => setIsWalletModalOpen(false)}
+        userId={user?.id ?? ''}
+        currentVolts={volts}
+      />
+
+      <GuideModal
+        isOpen={isGuideModalOpen}
+        onClose={() => setIsGuideModalOpen(false)}
+      />
+
+      <Modal
+        isOpen={isInitialNoticeOpen}
+        onClose={closeInitialNotice}
+        className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl"
+      >
+        <h3 className="text-lg font-bold text-slate-800">
+          {activeNotice?.title ?? '공지사항'}
+        </h3>
+        <p className="mt-2 text-xs text-slate-400">
+          {activeNotice ? new Date(activeNotice.created_at).toLocaleString() : ''}
+        </p>
+        <div className="mt-4 max-h-[40vh] overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-700 whitespace-pre-wrap">
+          {activeNotice?.content}
+        </div>
+        <label className="mt-4 inline-flex items-center gap-2 text-xs text-slate-600">
+          <input
+            type="checkbox"
+            checked={noticeDismissForDay}
+            onChange={(e) => setNoticeDismissForDay(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          하루 동안 보지 않기
+        </label>
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={closeInitialNotice}
+            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800"
+          >
+            닫기
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isNoticeListOpen}
+        onClose={() => setIsNoticeListOpen(false)}
+        className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl"
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold text-slate-800">📢 공지사항</h3>
+          <button
+            type="button"
+            onClick={() => setIsNoticeListOpen(false)}
+            className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="mt-4 max-h-[60vh] space-y-3 overflow-y-auto pr-1 custom-scrollbar">
+          {isNoticeLoading ? (
+            <div className="py-10 text-center text-sm font-semibold text-slate-400">공지사항을 불러오는 중...</div>
+          ) : noticeList.length === 0 ? (
+            <div className="py-10 text-center text-sm font-semibold text-slate-400">등록된 공지사항이 없습니다.</div>
+          ) : (
+            noticeList.map((notice) => (
+              <div key={notice.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-bold text-slate-800">{notice.title}</p>
+                <p className="mt-1 text-[11px] text-slate-400">{new Date(notice.created_at).toLocaleString()}</p>
+                <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">{notice.content}</p>
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
 
       {/* ✨ 4. 관리자 페이지 모달 (Props 추가됨!) */}
       {showAdmin && user && (
@@ -767,3 +1050,4 @@ function App() {
     }
 
 export default App;
+

@@ -11,6 +11,7 @@ interface HistoryItem {
   date: string;
   theme: ThemeType;
   mode: 'basic' | 'pro';
+  toneGuide?: string | null;
 }
 
 interface PostRow {
@@ -20,6 +21,7 @@ interface PostRow {
   created_at: string;
   theme: ThemeType;
   is_test_mode: boolean;
+  tone_guide?: string | null;
 }
 
 interface UseHistoryParams {
@@ -58,7 +60,7 @@ export function useHistory({
       .from('posts')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(10);
+      .limit(100);
 
     if (data) {
       const formatted: HistoryItem[] = (data as PostRow[]).map((item) => ({
@@ -68,12 +70,13 @@ export function useHistory({
         date: new Date(item.created_at).toLocaleDateString(),
         theme: item.theme,
         mode: item.is_test_mode ? 'basic' : 'pro',
+        toneGuide: item.tone_guide ?? null,
       }));
       setHistory(formatted);
     }
   }, []);
 
-  const saveToHistory = useCallback(async (newKeyword: string, newContent: string) => {
+  const saveToHistory = useCallback(async (newKeyword: string, newContent: string, toneGuide?: string) => {
     if (!user) return;
     const { error } = await supabase.from('posts').insert({
       user_id: user.id,
@@ -82,6 +85,7 @@ export function useHistory({
       theme: selectedTheme,
       // 기존 DB 컬럼 호환: basic=true, pro=false
       is_test_mode: mode === 'basic',
+      tone_guide: toneGuide?.trim() ? toneGuide.trim() : null,
     });
 
     if (error) {

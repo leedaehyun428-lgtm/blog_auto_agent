@@ -1,4 +1,5 @@
-﻿import type { ComponentType } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
+import type { ComponentType } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles,
@@ -18,6 +19,8 @@ import {
   XCircle,
   BarChart3,
   MessageSquarePlus,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import type { ThemeType, GenerateMode } from '../../../api';
@@ -63,6 +66,7 @@ interface HistoryItem {
   date: string;
   theme: ThemeType;
   mode: GenerateMode;
+  toneGuide?: string | null;
 }
 
 interface WritingSectionProps {
@@ -70,6 +74,7 @@ interface WritingSectionProps {
   isLoading: boolean;
   isAnalyzing: boolean;
   mode: GenerateMode;
+  setMode: (value: GenerateMode) => void;
   resultMode: GenerateMode;
   isMobileView: boolean;
   isEditing: boolean;
@@ -120,6 +125,7 @@ export default function WritingSection({
   isLoading,
   isAnalyzing,
   mode,
+  setMode,
   resultMode,
   isMobileView,
   isEditing,
@@ -166,6 +172,55 @@ export default function WritingSection({
 }: WritingSectionProps) {
   const isBasicMode = mode === 'basic';
   const isResultBasicMode = resultMode === 'basic';
+  const [historyView, setHistoryView] = useState<'recent' | 'archive'>('recent');
+  const [isArchiveOpen, setIsArchiveOpen] = useState(true);
+  const [archivePage, setArchivePage] = useState(1);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  const ARCHIVE_PAGE_SIZE = 7;
+
+  const loadingMessages = useMemo(
+    () =>
+      mode === 'pro'
+        ? [
+            '맛집 키워드 분석 중...',
+            '네이버 상위 노출 로직 대입 중...',
+            '매력적인 제목 뽑는 중...',
+            '원고 작성 마무리 중...',
+          ]
+        : [
+            '키워드 핵심 문맥 정리 중...',
+            '기본 노출 구조 적용 중...',
+            '읽기 쉬운 문장 흐름 구성 중...',
+            '완성도 체크 및 정리 중...',
+          ],
+    [mode],
+  );
+
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingMessageIndex(0);
+      return;
+    }
+
+    setLoadingMessageIndex(0);
+    const timer = setInterval(() => {
+      setLoadingMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+    }, 3000);
+
+    return () => clearInterval(timer);
+  }, [isLoading, loadingMessages]);
+
+  const currentLoadingMessage = loadingMessages[loadingMessageIndex] ?? '';
+  const totalArchivePages = Math.max(1, Math.ceil(history.length / ARCHIVE_PAGE_SIZE));
+  const displayedHistory =
+    historyView === 'recent'
+      ? history.slice(0, ARCHIVE_PAGE_SIZE)
+      : history.slice((archivePage - 1) * ARCHIVE_PAGE_SIZE, archivePage * ARCHIVE_PAGE_SIZE);
+
+  useEffect(() => {
+    setArchivePage(1);
+  }, [historyView, history.length]);
+
   return (
                 <div className="p-4 md:p-8 flex-1 flex flex-col overflow-y-auto custom-scrollbar">
           
@@ -175,7 +230,31 @@ export default function WritingSection({
               {/* 테마 선택 */}
               <div className="mb-8">
                 <p className="text-center text-sm font-medium text-slate-400 mb-4">오늘의 포스팅 주제는 무엇인가요?</p>
-                {/* ✨ 모바일: grid-cols-3 (3개씩), PC: grid-cols-6 (6개씩) */}
+                <div className="mb-4 flex justify-center">
+                  <div className="inline-grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1 shadow-inner">
+                    <button
+                      type="button"
+                      onClick={() => setMode('basic')}
+                      className={`rounded-xl px-4 py-2 text-xs md:text-sm font-bold transition-all active:scale-95 ${
+                        isBasicMode ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      ⚡ 일반 (20V)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMode('pro')}
+                      className={`rounded-xl px-4 py-2 text-xs md:text-sm font-bold transition-all active:scale-95 ${
+                        !isBasicMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        <span>🚀 고성능 (100V)</span>
+                        <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-black text-violet-600">Premium</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
                   {themes.map((theme) => {
                     const Icon = theme.icon;
@@ -185,8 +264,8 @@ export default function WritingSection({
                         key={theme.id}
                         onClick={() => setSelectedTheme(theme.id)}
                         className={`flex flex-col items-center justify-center gap-2 p-2 md:p-3 rounded-2xl transition-all duration-300 ${
-                          isSelected 
-                            ? `bg-white shadow-lg shadow-slate-200 ring-2 ${themeStyles.ring} -translate-y-1` 
+                          isSelected
+                            ? `bg-white shadow-lg shadow-slate-200 ring-2 ${themeStyles.ring} -translate-y-1`
                             : 'bg-white/40 hover:bg-white/80 hover:shadow-md text-slate-400'
                         }`}
                       >
@@ -197,12 +276,12 @@ export default function WritingSection({
                           {theme.label.split('/')[0]}
                         </span>
                       </button>
-                    )
+                    );
                   })}
                 </div>
               </div>
 
-             {/* ✨ 검색창 & 분석 버튼 영역 */}
+             {/* 검색창 & 분석 버튼 영역 */}
               <div className="space-y-6 mb-10">
                 {/* flex-col: 모바일에서는 세로 배치 (검색창 위, 버튼 아래)
                     md:flex-row: PC에서는 가로 배치 (한 줄)
@@ -225,9 +304,9 @@ export default function WritingSection({
                     )}
                   </div>
                   
-                  {/* 버튼 영역 (모바일에서는 가로로 꽉 차게, PC에서는 내용물만큼만) */}
+                  {/* 버튼 영역 (모바일은 가로 꽉 차게, PC는 내용물 크기) */}
                   <div className="flex gap-2 w-full md:w-auto">
-                      {/* 📊 분석 버튼 (모바일: flex-1로 반반 차지) */}
+                      {/* 분석 버튼 (모바일 반반 분할) */}
                       <button 
                         onClick={handleAnalyze}
                         disabled={isAnalyzing || isLoading}
@@ -237,7 +316,7 @@ export default function WritingSection({
                         <span className="text-[10px] mt-1 font-medium">분석</span>
                       </button>
 
-                      {/* ✨ 생성 버튼 (모바일: flex-1로 반반 차지) */}
+                      {/* 생성 버튼 (모바일 반반 분할) */}
                       <button 
                         onClick={handleGenerate}
                         disabled={isLoading}
@@ -249,7 +328,7 @@ export default function WritingSection({
                   </div>
                 </div>
 
-                {/* 📊 분석 결과 리포트 (분석 완료 시 표시) */}
+                {/* 분석 결과 리포트 */}
                 <AnimatePresence>
                   {analysisData && (
                     <motion.div 
@@ -260,15 +339,15 @@ export default function WritingSection({
                     >
                       <div className="bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
                         
-                        {/* 1. 내 키워드 진단 */}
+                        {/* 1. 현재 키워드 진단 */}
                         <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                           <div>
                             <span className="text-xs font-bold text-slate-400 uppercase">Current Keyword</span>
                             <div className="flex items-center gap-2 mt-1">
                               <span className="text-lg font-bold text-slate-800">{analysisData.main.keyword}</span>
-                              {analysisData.main.compIdx === 'HIGH' && <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">🔥 경쟁높음</span>}
-                              {analysisData.main.compIdx === 'MID' && <span className="text-[10px] font-bold bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded-full">⚡ 경쟁중간</span>}
-                              {analysisData.main.compIdx === 'LOW' && <span className="text-[10px] font-bold bg-green-100 text-green-600 px-2 py-0.5 rounded-full">🍀 경쟁낮음</span>}
+                              {analysisData.main.compIdx === 'HIGH' && <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">경쟁 높음</span>}
+                              {analysisData.main.compIdx === 'MID' && <span className="text-[10px] font-bold bg-yellow-100 text-yellow-600 px-2 py-0.5 rounded-full">경쟁 중간</span>}
+                              {analysisData.main.compIdx === 'LOW' && <span className="text-[10px] font-bold bg-green-100 text-green-600 px-2 py-0.5 rounded-full">경쟁 낮음</span>}
                             </div>
                           </div>
                           <div className="flex gap-4 text-right">
@@ -277,17 +356,17 @@ export default function WritingSection({
                               <p className="font-bold text-slate-700">{analysisData.main.totalSearch.toLocaleString()}</p>
                             </div>
                             <div>
-                              <p className="text-xs text-slate-400 mb-0.5">클릭수</p>
+                              <p className="text-xs text-slate-400 mb-0.5">월간 클릭수</p>
                               <p className="font-bold text-slate-700">{analysisData.main.totalClick}</p>
                             </div>
                           </div>
                         </div>
 
-                        {/* 2. 황금 키워드 추천 */}
+                        {/* 2. 연관 키워드 추천 */}
                         <div>
                            <div className="flex items-center gap-2 mb-3">
                              <Sparkles className="w-4 h-4 text-yellow-500" />
-                             <span className="text-sm font-bold text-slate-600">AI 추천 황금 키워드 (클릭하여 교체)</span>
+                             <span className="text-sm font-bold text-slate-600">AI 추천 연관 키워드 (클릭하여 교체)</span>
                            </div>
                            
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -297,7 +376,7 @@ export default function WritingSection({
                                    key={idx}
                                    onClick={() => {
                                      setKeyword(item.keyword);
-                                     handleAnalyze(); // 교체 후 바로 재분석
+                                     handleAnalyze();
                                    }}
                                    className="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-blue-50 hover:ring-1 ring-blue-200 transition-all group text-left"
                                  >
@@ -324,7 +403,7 @@ export default function WritingSection({
                                ))
                              ) : (
                                <div className="col-span-2 text-center py-4 text-sm text-slate-400 bg-slate-50 rounded-xl">
-                                 추천할 만한 연관 키워드가 없네요 😅 <br/> 다른 키워드로 시도해보세요!
+                                 추천할 만한 연관 키워드가 아직 없어요. <br /> 다른 키워드로 시도해보세요!
                                </div>
                              )}
                            </div>
@@ -335,9 +414,7 @@ export default function WritingSection({
                   )}
                 </AnimatePresence>
 
-                {/* ... 기존 키워드 분석 결과 아래에 추가 ... */}
-
-                {/* 🏆 상위 노출 전략 가이드 (New) */}
+                {/* 상위 노출 가이드 */}
                 {exposureGuide && (
                   <div className="mt-4 pt-4 border-t border-slate-200">
                     <div className="flex items-center gap-2 mb-3">
@@ -361,21 +438,20 @@ export default function WritingSection({
                       <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                         <p className="text-[10px] text-slate-400 mb-1">키워드 반복</p>
                         <p className="text-lg font-black text-slate-700">{exposureGuide.keywordCount}회</p>
-                        <p className="text-[9px] text-blue-500 font-bold">자연스럽게</p>
+                        <p className="text-[9px] text-blue-500 font-bold">자연스럽게 반복</p>
                       </div>
                     </div>
                     
                     <div className="mt-3 text-[10px] text-slate-400 bg-slate-100 p-2 rounded-lg flex items-center gap-2">
                       <span>💡</span>
                       <span>
-                        상위 블로거들은 평균 <b>{exposureGuide.charCount}자</b>를 쓰고 있습니다. 
-                        비슷한 분량으로 작성하면 노출 확률이 올라갑니다!
+                        상위 블로그 평균 기준 <b>{exposureGuide.charCount.toLocaleString()}자</b> 수준으로 작성하면 노출 안정성에 도움이 됩니다.
                       </span>
                     </div>
                   </div>
                 )}
 
-                {/* ✨ 가이드 입력 아코디언 */}
+                {/* 가이드 입력 아코디언 */}
                 <div className="relative px-2">
                    <button 
                      onClick={() => setUseGuide(!useGuide)}
@@ -397,7 +473,7 @@ export default function WritingSection({
                           className="overflow-hidden"
                         >
                           <div className="relative">
-                             {/* ✨ [추가된 부분] 말투 선택 및 저장 영역 */}
+                             {/* 말투 선택/저장 영역 */}
                             <div className="flex gap-2 mb-2 mt-2">
                               <select 
                                 value={selectedPromptId}
@@ -406,7 +482,7 @@ export default function WritingSection({
                                   setSelectedPromptId(pid);
                                   if (!pid) { setGuide(''); return; }
 
-                                  // 1. 내 저장 목록에서 찾기
+                                  // 1. 사용자 저장 목록에서 찾기
                                   let selected = prompts.find(p => p.id === pid);
                                   // 2. 없으면 기본 프리셋에서 찾기
                                   if (!selected) selected = defaultPrompts.find(p => p.id === pid);
@@ -418,18 +494,18 @@ export default function WritingSection({
                                 }}
                                 className="..."
                               >
-                                <option value="">📋 저장된 말투 불러오기...</option>
+                                <option value="">💬 저장된 말투 불러오기...</option>
                                 
-                                {/* ✨ [추가] 기본 제공 프리셋 */}
+                                {/* 기본 제공 프리셋 */}
                                 <optgroup label="✨ Briter AI 추천 프리셋">
                                   {defaultPrompts.map(p => (
                                     <option key={p.id} value={p.id}>{p.title}</option>
                                   ))}
                                 </optgroup>
 
-                                {/* 기존 내 말투 목록 */}
+                                {/* 내가 저장한 말투 목록 */}
                                 {prompts.length > 0 && (
-                                  <optgroup label="📂 내 저장 목록">
+                                  <optgroup label="👤 내 저장 목록">
                                     {prompts.map(p => (
                                       <option key={p.id} value={p.id}>{p.title}</option>
                                     ))}
@@ -437,7 +513,7 @@ export default function WritingSection({
                                 )}
                               </select>
 
-                              {/* ✨ [삭제] 버튼 추가: 선택된 게 있을 때만 보임 */}
+                              {/* 선택된 말투 삭제 버튼 */}
                               {selectedPromptId && (
                                 <button 
                                   onClick={handleDeletePrompt}
@@ -459,11 +535,11 @@ export default function WritingSection({
                             <textarea
                               value={guide}
                               onChange={(e) => setGuide(e.target.value)}
-                              placeholder="예시: '30대 직장인 말투로 써줘...' / '업체에서 준 가이드를 여기에 붙여넣으세요...'"
+                              placeholder="예시: '30대 직장인 말투로 써줘...' / '업체 가이드를 여기에 붙여넣으세요...'"
                               className={`w-full mt-3 p-4 rounded-xl border bg-white/50 focus:bg-white text-sm text-slate-600 placeholder:text-slate-300 focus:outline-none focus:ring-2 resize-none h-40 transition-all ${themeStyles.border} ${themeStyles.focusRing}`}
                             />
                             
-                            {/* ✨ 글자 수 카운터 */}
+                            {/* 글자 수 카운터 */}
                             <div className="flex justify-between items-center mt-2 px-1">
                                <p className="text-[11px] text-slate-400">
                                  * 업체 가이드를 통째로 붙여넣으셔도 됩니다. (길이 제한 없음)
@@ -479,16 +555,16 @@ export default function WritingSection({
                 </div>
               </div>
 
-              {/* ✨ [추가] 말투 저장 팝업 (모달) */}
+              {/* 말투 저장 모달 */}
               {isPromptModalOpen && (
                 <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
                   <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl animate-fade-in-up">
                     <h3 className="text-lg font-bold text-slate-800 mb-2">나만의 말투 저장</h3>
-                    <p className="text-xs text-slate-500 mb-4">현재 작성한 가이드를 저장해두고 계속 쓰세요!</p>
+                    <p className="text-xs text-slate-500 mb-4">현재 작성 중인 가이드를 저장해두고 계속 재사용할 수 있어요.</p>
                     
                     <input 
                       type="text" 
-                      placeholder="말투 이름 (예: 20대 감성, 맛집 전문가)" 
+                      placeholder="말투 이름 (예: 20대 감성, 맛집 전문가)"
                       value={newPromptTitle}
                       onChange={(e) => setNewPromptTitle(e.target.value)}
                       className="w-full p-3 border rounded-xl mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -502,36 +578,103 @@ export default function WritingSection({
                 </div>
               )}
 
-              {/* 히스토리 */}
+              {/* 생성 기록 보관함 */}
               {history.length > 0 && !isLoading && (
                 <div className="animate-fade-in-up px-2">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      <Clock className="w-3 h-3" /> Recent Drafts
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+                      <Clock className="w-3 h-3" /> Generated Archive
                     </div>
-                  </div>
-                  {/* 히스토리 영역 수정 */}
-                  <div className="flex flex-wrap gap-2">
-                    {history.map((item) => (
-                      <div // button을 div로 감싸거나, button 안에 로직 수정
-                        key={item.id}
-                        className={`relative pl-4 pr-2 py-2 bg-white/60 hover:bg-white border border-white/50 rounded-full text-sm text-slate-500 shadow-sm hover:shadow-md transition-all flex items-center gap-2 group hover:${themeStyles.border} cursor-pointer`}
-                        onClick={() => loadFromHistory(item)} // 클릭하면 불러오기
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full bg-slate-300 transition-colors group-hover:${item.mode === 'basic' ? 'bg-orange-400' : 'bg-blue-400'}`}></span>
-                        <span className={`group-hover:${themeStyles.accentText} mr-1`}>{item.keyword}</span>
-                        
-                        {/* ✨ [X] 삭제 버튼 추가 */}
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
                         <button
-                          onClick={(e) => deleteHistoryItem(e, item.id)}
-                          className="p-1 rounded-full hover:bg-red-100 text-slate-300 hover:text-red-500 transition-colors"
-                          title="삭제"
+                          type="button"
+                          onClick={() => setHistoryView('recent')}
+                          className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                            historyView === 'recent' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-500'
+                          }`}
                         >
-                          <X className="w-3 h-3" />
+                          최근
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryView('archive')}
+                          className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                            historyView === 'archive' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-500'
+                          }`}
+                        >
+                          보관함
                         </button>
                       </div>
-                    ))}
+                      <button
+                        type="button"
+                        onClick={() => setIsArchiveOpen((prev) => !prev)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-500 shadow-sm hover:bg-slate-50"
+                      >
+                        {isArchiveOpen ? '접기' : '펼치기'}
+                        {isArchiveOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
                   </div>
+                  {isArchiveOpen && (
+                    <>
+                      <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200 bg-white/70 p-2 custom-scrollbar">
+                        <div className="space-y-2">
+                          {displayedHistory.map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => loadFromHistory(item)}
+                              className="w-full rounded-xl border border-slate-100 bg-white px-3 py-2 text-left shadow-sm transition-colors hover:border-slate-200 hover:bg-slate-50"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <span className={`h-2 w-2 rounded-full ${item.mode === 'basic' ? 'bg-orange-400' : 'bg-blue-400'}`} />
+                                  <span className="truncate text-sm font-bold text-slate-700">{item.keyword}</span>
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                                    {item.mode.toUpperCase()}
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={(e) => deleteHistoryItem(e, item.id)}
+                                  className="rounded-full p-1 text-slate-300 transition-colors hover:bg-red-100 hover:text-red-500"
+                                  title="삭제"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                              <p className="mt-1 truncate text-[11px] text-slate-400">
+                                {item.toneGuide ? `가이드 저장됨 · ${item.date}` : `가이드 없음 · ${item.date}`}
+                              </p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {historyView === 'archive' && totalArchivePages > 1 && (
+                        <div className="mt-2 flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setArchivePage((prev) => Math.max(1, prev - 1))}
+                            disabled={archivePage === 1}
+                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-500 disabled:opacity-40"
+                          >
+                            이전
+                          </button>
+                          <span className="text-[11px] font-bold text-slate-500">
+                            {archivePage} / {totalArchivePages}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setArchivePage((prev) => Math.min(totalArchivePages, prev + 1))}
+                            disabled={archivePage === totalArchivePages}
+                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-500 disabled:opacity-40"
+                          >
+                            다음
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -550,7 +693,7 @@ export default function WritingSection({
                     <Sparkles className={`w-10 h-10 ${themeStyles.subText}`} />
                   </div>
                   <p className="text-slate-400 font-medium text-center leading-relaxed">
-                    주제를 선택하고 키워드를 던져주세요.<br/>
+                    주제를 선택하고 키워드를 입력해 주세요.<br/>
                     <span className={`${themeStyles.accentText} font-semibold`}>제품 리뷰</span>부터 <span className={`${themeStyles.accentText} font-semibold`}>맛집 탐방</span>까지.<br/>
                     {isBasicMode ? '일반 모드: 빠르게 초안을 만듭니다.' : '고성능 모드: 검색 기반으로 정교하게 작성합니다.'}
                   </p>
@@ -571,10 +714,11 @@ export default function WritingSection({
                   </div>
                   <div className="text-center space-y-2">
                     <h3 className="text-xl font-bold text-slate-700">
-                      {step === 'searching' ? '정보를 모으고 있어요...' : '글을 다듬고 있어요...'}
+                      {step === 'searching' ? '스토리텔링 초안 준비 중...' : 'AI 문장 다듬는 중...'}
                     </h3>
-                    <p className="text-slate-400 text-sm">
-                        {step === 'searching' ? '최신 리뷰와 꿀팁을 찾는 중 🔍' : '소녀 감성 한 스푼 넣는 중 ✨'}
+                    <p className="text-slate-500 text-sm font-semibold">{currentLoadingMessage}</p>
+                    <p className="text-slate-400 text-xs">
+                      단계 {loadingMessageIndex + 1} / {loadingMessages.length}
                     </p>
                   </div>
                 </motion.div>
@@ -662,7 +806,7 @@ export default function WritingSection({
                         <div className="flex flex-col gap-1 text-center md:text-left">
                           <span className="opacity-80">Briter AI가 작성한 초안입니다. ({isResultBasicMode ? '일반 모드' : '고성능 모드'})</span>
                           <span className={`font-bold ${themeStyles.accentText} tracking-tight`}>
-                            Copyright © Simsimpuri All Rights Reserved.
+                            Copyright 짤 Simsimpuri All Rights Reserved.
                           </span>
                         </div>
                         
@@ -673,7 +817,7 @@ export default function WritingSection({
                           </div>
                           <span className="w-px h-3 bg-slate-300"></span>
                           <div>
-                             <span>제외 <b className={`text-slate-600 ${themeStyles.accentText}`}>{result.replace(/\s/g, '').length}</b></span>
+                             <span>공백제외 <b className={`text-slate-600 ${themeStyles.accentText}`}>{result.replace(/\s/g, '').length}</b></span>
                           </div>
                         </div>
                     </div>
@@ -686,6 +830,9 @@ export default function WritingSection({
         </div>
   );
 }
+
+
+
 
 
 
